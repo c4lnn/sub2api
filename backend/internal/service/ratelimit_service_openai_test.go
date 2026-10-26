@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -140,6 +141,49 @@ func TestParseOpenAIRateLimitResetTime_OpenCodeGoUsageLimit(t *testing.T) {
 
 func TestParseOpenAIRateLimitResetTime_DoesNotParseUnknownErrorMessage(t *testing.T) {
 	body := []byte(`{"error":{"type":"rate_limit_error","message":"Resets in 2 days."}}`)
+
+	require.Nil(t, parseOpenAIRateLimitResetTime(body))
+}
+
+func TestParseOpenAIRateLimitResetTime_AccountQuotaExceeded(t *testing.T) {
+	resetAt := time.Now().Add(2 * time.Hour).Round(time.Second).In(time.FixedZone("CST", 8*3600))
+	tsStr := resetAt.Format("2006-01-02 15:04:05 -0700 MST")
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"monthly", fmt.Sprintf(`{"error":{"code":"AccountQuotaExceeded","message":"You have exceeded the monthly usage quota. It will reset at %s."}}`, tsStr)},
+		{"weekly", fmt.Sprintf(`{"error":{"code":"AccountQuotaExceeded","message":"You have exceeded the weekly usage quota. It will reset at %s."}}`, tsStr)},
+		{"5-hour", fmt.Sprintf(`{"error":{"code":"AccountQuotaExceeded","message":"You have exceeded the 5-hour usage quota. It will reset at %s."}}`, tsStr)},
+		{"no trailing period", fmt.Sprintf(`{"error":{"code":"AccountQuotaExceeded","message":"You have exceeded the monthly usage quota. It will reset at %s"}}`, tsStr)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseOpenAIRateLimitResetTime([]byte(tt.body))
+			require.NotNil(t, got)
+			require.Equal(t, resetAt.Unix(), *got)
+		})
+	}
+}
+
+func TestParseOpenAIRateLimitResetTime_AccountQuotaExceeded_ExpiredReturnsNil(t *testing.T) {
+	expired := time.Now().Add(-1 * time.Hour).In(time.FixedZone("CST", 8*3600))
+	tsStr := expired.Format("2006-01-02 15:04:05 -0700 MST")
+	body := fmt.Sprintf(`{"error":{"code":"AccountQuotaExceeded","message":"You have exceeded the monthly usage quota. It will reset at %s."}}`, tsStr)
+
+	require.Nil(t, parseOpenAIRateLimitResetTime([]byte(body)))
+}
+
+func TestParseOpenAIRateLimitResetTime_AccountQuotaExceeded_NoResetAtReturnsNil(t *testing.T) {
+	body := []byte(`{"error":{"code":"AccountQuotaExceeded","message":"You have exceeded the monthly usage quota."}}`)
+
+	require.Nil(t, parseOpenAIRateLimitResetTime(body))
+}
+
+func TestParseOpenAIRateLimitResetTime_AccountQuotaExceeded_WithoutCodeNotMatched(t *testing.T) {
+	body := []byte(`{"error":{"type":"rate_limit_error","message":"You have exceeded the monthly usage quota. It will reset at 2099-01-01 00:00:00 +0800 CST."}}`)
 
 	require.Nil(t, parseOpenAIRateLimitResetTime(body))
 }
