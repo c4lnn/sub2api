@@ -90,6 +90,10 @@ var openCodeGoUsageLimitResetPattern = regexp.MustCompile(`(?i)\bresets\s+in\s+`
 
 var openCodeGoUsageLimitDurationPartPattern = regexp.MustCompile(`(?i)^([0-9]+(?:\.[0-9]+)?)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|week|weeks)\b`)
 
+// openAIAccountQuotaResetTimePattern 匹配 AccountQuotaExceeded message 中的
+// "It will reset at 2026-10-31 23:59:59 +0800 CST." 绝对时间。
+var openAIAccountQuotaResetTimePattern = regexp.MustCompile(`(?i)reset\s+at\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+[+-]\d{4}\s+[A-Za-z]+)`)
+
 const (
 	openAI403CooldownMinutesDefault = 10
 	openAI403DisableThreshold       = 3
@@ -1861,6 +1865,16 @@ func parseOpenAIRateLimitResetTime(body []byte) *int64 {
 		return nil
 	}
 
+	// AccountQuotaExceeded：配额耗尽，reset 时间在 message 文本里
+	// （"You have exceeded the 5-hour/weekly/monthly usage quota. It will reset at 2026-10-31 23:59:59 +0800 CST."）。
+	if errCode, _ := errObj["code"].(string); errCode == "AccountQuotaExceeded" {
+		if msg, _ := errObj["message"].(string); msg != "" {
+			if ts := parseOpenAIAccountQuotaResetTime(msg); ts != nil {
+				return ts
+			}
+		}
+	}
+
 	// 检查是否为已知的账号用量限制类型。
 	errType, _ := errObj["type"].(string)
 	if errType != "usage_limit_reached" && errType != "rate_limit_exceeded" && errType != "GoUsageLimitError" {
@@ -1901,6 +1915,26 @@ func parseOpenAIRateLimitResetTime(body []byte) *int64 {
 	}
 
 	return nil
+}
+
+// parseOpenAIAccountQuotaResetTime 解析 AccountQuotaExceeded 错误 message 中的
+// "It will reset at 2026-10-31 23:59:59 +0800 CST." 绝对时间，返回 Unix 秒。
+// 解析失败或时间已过期返回 nil。
+func parseOpenAIAccountQuotaResetTime(message string) *int64 {
+	m := openAIAccountQuotaResetTimePattern.FindStringSubmatch(message)
+	if len(m) < 2 {
+		return nil
+	}
+	raw := strings.TrimSuffix(strings.TrimSpace(m[1]), ".")
+	resetAt, err := time.Parse("2006-01-02 15:04:05 -0700 MST", raw)
+	if err != nil {
+		return nil
+	}
+	if !resetAt.After(time.Now()) {
+		return nil
+	}
+	ts := resetAt.Unix()
+	return &ts
 }
 
 func parseOpenCodeGoUsageLimitResetDuration(message string) time.Duration {
