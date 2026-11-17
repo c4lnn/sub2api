@@ -121,7 +121,7 @@ func (r *channelMonitorRepository) queryPublished(ctx context.Context, id *int64
 	if err != nil {
 		return nil, fmt.Errorf("query published monitors: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]*service.ChannelMonitor, 0)
 	for rows.Next() {
 		m := &service.ChannelMonitor{Enabled: true}

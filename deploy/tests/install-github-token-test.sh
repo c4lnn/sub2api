@@ -22,9 +22,9 @@ EOF
 
 run_api_curl() {
     CURL_ARGS_LOG="$1" HOME="$TEMP_DIR/home" PATH="$TEMP_DIR:$PATH" UPDATE_GITHUB_TOKEN="${2:-}" \
-        GITHUB_TOKEN="github-fallback" GH_TOKEN="gh-fallback" \
-        bash -c 'source <(head -n -1 "$1"); github_api_curl -s "$2"' bash \
-        "$ROOT_DIR/deploy/install.sh" "https://api.github.com/repos/Wei-Shaw/sub2api/releases/latest"
+        GITHUB_TOKEN="github-fallback" GH_TOKEN="gh-fallback" SUB2API_GITHUB_REPO="${3:-}" \
+        bash -c 'source <(head -n -1 "$1"); github_api_curl -s "https://api.github.com/repos/${GITHUB_REPO}/releases/latest"' bash \
+        "$ROOT_DIR/deploy/install.sh" </dev/null
 }
 
 run_api_curl "$TEMP_DIR/authenticated" "update-secret"
@@ -41,7 +41,14 @@ if grep -Eq 'update-secret|github-fallback|gh-fallback' "$TEMP_DIR/authenticated
     echo "installer exposed a token in curl environment" >&2
     exit 1
 fi
-test "$(grep -Fxc 'https://api.github.com/repos/Wei-Shaw/sub2api/releases/latest' "$TEMP_DIR/authenticated")" -eq 1
+test "$(grep -Fxc 'https://api.github.com/repos/c4lnn/sub2api/releases/latest' "$TEMP_DIR/authenticated")" -eq 1
+run_api_curl "$TEMP_DIR/override" "override-secret" "example-org/sub2api"
+test "$(grep -Fxc 'https://api.github.com/repos/example-org/sub2api/releases/latest' "$TEMP_DIR/override")" -eq 1
+test "$(grep -Fxc 'header = "Authorization: Bearer override-secret"' "$TEMP_DIR/override.stdin")" -eq 1
+if grep -Fq 'override-secret' "$TEMP_DIR/override" || grep -Eq 'override-secret|github-fallback|gh-fallback' "$TEMP_DIR/override.env"; then
+    echo "installer exposed the override token in curl arguments or environment" >&2
+    exit 1
+fi
 if grep -Fq 'example.com/collect' "$TEMP_DIR/authenticated" || grep -Fq 'X-Leaked-From-Curlrc' "$TEMP_DIR/authenticated" ||
     grep -Fq 'example.com/collect' "$TEMP_DIR/authenticated.stdin" || grep -Fq 'X-Leaked-From-Curlrc' "$TEMP_DIR/authenticated.stdin"; then
     echo "installer allowed hostile curl config into authenticated invocation" >&2
@@ -59,7 +66,7 @@ if grep -Fq 'Authorization:' "$TEMP_DIR/anonymous"; then
     exit 1
 fi
 test ! -s "$TEMP_DIR/anonymous.stdin"
-test "$(grep -Fxc 'https://api.github.com/repos/Wei-Shaw/sub2api/releases/latest' "$TEMP_DIR/anonymous")" -eq 1
+test "$(grep -Fxc 'https://api.github.com/repos/c4lnn/sub2api/releases/latest' "$TEMP_DIR/anonymous")" -eq 1
 if grep -Fq 'example.com/collect' "$TEMP_DIR/anonymous" || grep -Fq 'X-Leaked-From-Curlrc' "$TEMP_DIR/anonymous"; then
     echo "installer allowed hostile curl config into anonymous invocation" >&2
     exit 1

@@ -70,7 +70,12 @@ func TestUpdateServicePerformUpdateNoUpdateReturnsSentinel(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, ErrNoUpdateAvailable))
 	require.ErrorIs(t, err, ErrNoUpdateAvailable)
-	require.Equal(t, "ranxi2001/sub2api", githubClient.latestRepo)
+	require.Equal(t, "c4lnn/sub2api", githubClient.latestRepo)
+}
+
+func TestUpdateServiceVersionTransitionToCalVer(t *testing.T) {
+	require.Equal(t, -1, compareVersions("2.21.6", "2026.11.17"))
+	require.Equal(t, -1, compareVersions("2.21.6-yuanxu.1", "2026.11.17"))
 }
 
 func newRollbackTestService(current string, releases []*GitHubRelease) *UpdateService {

@@ -2,6 +2,8 @@
 
 主 CI、安全扫描、VIP 入账和多机验收先运行 `changes`。它比较 PR 的 merge base 与 head（production push 比较 before/head），仅启动相关 job。后端改动仍执行完整后端单元、集成和 lint；前端改动仍执行完整前端关键测试、类型检查和 lint。主前端固定 GitHub runner，Node 堆上限 6 GiB。
 
+部署脚本检查 `shell` 在 macOS 上运行以保留 Apple 容器测试；需要 Docker Compose CLI 的 Gateway 配置检查 `shell-compose` 在 Ubuntu 上运行，并额外跟踪 `deploy/.env.example`。
+
 范围在 `scopes.json` 中维护，包含源码、依赖锁文件及检查使用的辅助脚本。Markdown/RST 文档不计入应用源码指纹。job 命令、runner、环境变量、权限或依赖配置变化仍会触发对应检查；仅修改触发规则、归档工作流和本选择器时由 `CI selection rules` 验证。修改某个检查的依赖范围时应同时补充范围用例，不能为了转绿漏掉依赖。
 
 对于同一 PR 的后续提交，选择器查询原 PR 最近 30 次对应工作流，只有相关 Git 文件对象和 job 定义完全一致、且对应 job 确实成功时才复用。production 合并则检查实际父提交的已成功 job。失败、取消、跳过、未完成以及其他 PR/fork 的记录不能复用。未显式 checkout PR head 的旧任务可能测试了另一棵合并树，也不复用；当前两项多机验收采用这一保守限制，只按范围跳过。每次决策在 job summary 记录原因和旧 run/SHA；复用表示旧证据适用于相同输入，不声称新 head 已重新测试。查询失败或取不到旧提交时，受影响检查正常运行。

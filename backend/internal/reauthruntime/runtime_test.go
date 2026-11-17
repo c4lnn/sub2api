@@ -79,13 +79,20 @@ func TestPrepareVerifiesDigestBeforeExecutingAndReusesCache(t *testing.T) {
 				digest = strings.Repeat("0", 64)
 			}
 			requests := 0
-			m := New(root, "1.2.3", "http://127.0.0.1:4040", strings.Repeat("x", 64))
+			m := New(root, "2026.11.17", "http://127.0.0.1:4040", strings.Repeat("x", 64))
 			m.client = &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
 				requests++
 				require.NotContains(t, req.URL.String(), m.token)
+				if strings.Contains(req.URL.Path, "/releases/tags/") {
+					require.Equal(t, "api.github.com", req.URL.Host)
+					require.Equal(t, "/repos/c4lnn/sub2api/releases/tags/v2026.11.17", req.URL.Path)
+				} else {
+					require.Equal(t, "github.com", req.URL.Host)
+					require.Equal(t, "/c4lnn/sub2api/releases/download/v2026.11.17/sub2api-reauth_2026.11.17_linux_"+runtime.GOARCH+".tar.gz", req.URL.Path)
+				}
 				body := data
 				if strings.Contains(req.URL.Path, "/releases/tags/") {
-					body, _ = json.Marshal(map[string]any{"assets": []map[string]string{{"name": "sub2api-reauth_1.2.3_linux_" + runtime.GOARCH + ".tar.gz", "digest": "sha256:" + digest}}})
+					body, _ = json.Marshal(map[string]any{"assets": []map[string]string{{"name": "sub2api-reauth_2026.11.17_linux_" + runtime.GOARCH + ".tar.gz", "digest": "sha256:" + digest}}})
 				}
 				return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(body)), Header: http.Header{}}, nil
 			})}

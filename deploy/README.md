@@ -38,7 +38,7 @@ This directory contains files for deploying Sub2API on Linux servers and Apple-s
 | `apple-container.sh` | Native Apple `container` lifecycle script |
 | `APPLE_CONTAINER.md` | Apple `container` deployment and operations guide |
 | `.env.example` | Container environment variables template |
-| `DOCKER.md` | Docker Hub documentation |
+| `DOCKER.md` | GHCR image documentation |
 | `install.sh` | One-click binary installation script |
 | `migrate-reauth-managed.py` | 将旧登录 Worker 迁入随主程序版本自动升级的内置管理器，见 [迁移说明](MANAGED_WORKER.md) |
 | `install-datamanagementd.sh` | datamanagementd 一键安装脚本 |
@@ -78,10 +78,10 @@ Use the automated preparation script for the easiest setup:
 
 ```bash
 # Download and run the preparation script
-curl -sSL https://raw.githubusercontent.com/ranxi2001/sub2api/production/deploy/docker-deploy.sh | bash
+curl -sSL https://raw.githubusercontent.com/c4lnn/sub2api/production/deploy/docker-deploy.sh | bash
 
 # Or download first, then run
-curl -sSL https://raw.githubusercontent.com/ranxi2001/sub2api/production/deploy/docker-deploy.sh -o docker-deploy.sh
+curl -sSL https://raw.githubusercontent.com/c4lnn/sub2api/production/deploy/docker-deploy.sh -o docker-deploy.sh
 chmod +x docker-deploy.sh
 ./docker-deploy.sh
 ```
@@ -114,7 +114,7 @@ If you prefer manual control:
 
 ```bash
 # Clone repository
-git clone --branch production https://github.com/ranxi2001/sub2api.git
+git clone --branch production https://github.com/c4lnn/sub2api.git
 cd sub2api/deploy
 
 # Configure environment
@@ -209,6 +209,29 @@ database recovery period is not treated as a permanent process failure.
 - Migrations are applied in lexicographic order (e.g. `001_...sql`, `002_...sql`).
 - `schema_migrations` tracks applied migrations (filename + checksum).
 - Migrations are forward-only; rollback requires a DB backup restore or a manual compensating SQL script.
+
+## 本 fork 的发行迁移与首次部署
+
+本 fork 的正式版本使用三个递增数字段（例如 `2026.11.17`）；不带 `v` 的应用版本用于附件和镜像，Git tag 为 `v2026.11.17`。首个独立正式版只有在完整 Release 验收后才可作为部署来源：必须同时核对五个平台主程序包及 `checksums.txt`、Linux amd64/arm64 runtime、GHCR amd64/arm64 manifest 与 `latest`。Release 成功不代表生产实例已部署。
+
+后端升级检查、前端回滚候选与 runtime 下载只查询本 fork。首次显式部署新版本之前，运行中的旧二进制仍会沿用自身编译进去的更新源；只修改仓库、`.env` 或 Compose 文件不会切换它。新版本历史回滚列表只显示本仓库较旧的合格正式版，因此首次正式发布后的列表可能为空。恢复旧二进制或镜像不会回滚数据库，也会恢复旧二进制自己的升级源；数据库数据恢复须单独决策，不能把程序回滚当作数据回滚。
+
+### 现有 Docker Compose / Apple Container 实例
+
+现有 `.env` 和持久化数据由操作者管理。不要用新 `.env.example` 覆盖现有 `.env`，也不要删除或重建数据库、Redis 卷/目录。备份数据库及应用配置，检查 Compose 文件中的应用 `image`，只将应用镜像改为已验收的 `ghcr.io/c4lnn/sub2api:2026.11.17`（或明确选择的后续版本）；保留原有端口、凭据、卷和环境变量，再显式拉取并重建应用服务：
+
+```bash
+docker compose -f docker-compose.local.yml pull sub2api
+docker compose -f docker-compose.local.yml up -d sub2api
+```
+
+命名卷配置使用相应的 `docker-compose.yml` 命令。Apple Container 的已有 `.env` 不会被脚本默认覆盖；将 `APPLE_CONTAINER_SUB2API_IMAGE` 手动设为同一已验收镜像，再按 [Apple Container 升级步骤](APPLE_CONTAINER.md#backup-and-upgrade)拉取和重建。核对实际应用版本、更新信息来源、runtime 和回滚列表。安装脚本的 `SUB2API_GITHUB_REPO` 仅是安装脚本显式覆盖项，不是后台升级源配置。
+
+`GATEWAY_DISABLE_ENCRYPTED_AGENT_OWNER_BINDING` 本次保持既有透传且默认 `false`，不启用或改变该策略。只有确实计划切换策略时，才按[加密 agent owner 策略](../docs/encrypted-agent-owner-policy.md)统一共享 Redis 节点配置、停止新请求、排空在途请求和 WebSocket 后重启并重连；不能清 Redis 代替恢复，也不能承诺无条件滚动切换。
+
+首次升级还需按下方[“V1 展示分组升级与管理”](#v1-展示分组升级与管理)完成备份和隔离副本演练，并先停止旧版管理写入。`383_channel_monitor_display_groups.sql` 已存在于此代码基线，本次不修改迁移或监控实现。旧监控升级后进入待分组，须手动移入正式组才会显示在用户页；用户页可能暂时为空，但已启用的待分组监控仍可能探测并计费。旧二进制回退可能重新公开待分组监控；回退不默认删除新表列或修改迁移记录。
+
+仅在新正式发行已完整验证、记录旧 tag 的 commit 且恢复用旧二进制/镜像已另行保存后，先核对目标 remote URL 确实属于 `c4lnn/sub2api`，再删除该远端及本地的 `refs/tags/v2.21.6-yuanxu.1`；不凭 remote 名称猜测仓库，不移动或重建旧 tag，不删除其他 tag。保护规则或权限拒绝时停止该步骤，不绕过保护。删除 tag 会令依赖该 tag 的旧 raw URL 失效；旧 Release、附件和镜像保留，但不能依赖失效的 tag URL 恢复。先保存可用恢复产物，不以旧 tag 作为恢复路径。
 
 ### V1 展示分组升级与管理
 
@@ -470,12 +493,12 @@ For production servers using systemd.
 ### One-Line Installation
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/ranxi2001/sub2api/production/deploy/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/c4lnn/sub2api/production/deploy/install.sh | sudo bash
 ```
 
 ### Manual Installation
 
-1. Download the latest release from [GitHub Releases](https://github.com/ranxi2001/sub2api/releases)
+1. Download the latest release from [GitHub Releases](https://github.com/c4lnn/sub2api/releases)
 2. Extract and copy the binary to `/opt/sub2api/`
 3. Copy `sub2api.service` to `/etc/systemd/system/`
 4. Run:

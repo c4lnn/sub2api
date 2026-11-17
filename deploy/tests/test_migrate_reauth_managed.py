@@ -85,7 +85,8 @@ class MigrationTests(unittest.TestCase):
         architecture = {"x86_64": "amd64", "aarch64": "arm64"}.get(os.uname().machine)
         if not architecture:
             self.skipTest("Linux architecture fixture")
-        metadata = json.dumps({"assets": [{"name": "sub2api-reauth_2.11.1_linux_" + architecture + ".tar.gz", "digest": digest}]}).encode()
+        metadata = json.dumps({"assets": [{"name": "sub2api-reauth_2026.11.17_linux_" + architecture + ".tar.gz", "digest": digest}]}).encode()
+        download_urls = []
         worker_env = {b"OPENAI_TOTP_JOURNAL_DIR": os.fsencode(source), b"OPENAI_REAUTH_CONCURRENCY": b"4"}
         if protocol:
             worker_env[b"TURB_ROOT"] = b"/synthetic/custom"
@@ -106,7 +107,7 @@ class MigrationTests(unittest.TestCase):
         def command(*args):
             calls.append(args)
             if args[-1] == "--version":
-                return "Sub2API 2.11.1 (commit: synthetic)"
+                return "Sub2API 2026.11.17 (commit: synthetic)"
             return ""
 
         patches = [patch.object(migration, "SYSTEMD_DIR", base / "units"),
@@ -114,10 +115,12 @@ class MigrationTests(unittest.TestCase):
                    patch.object(migration, "property_value", side_effect=property_value),
                    patch.object(migration, "process_environment", side_effect=lambda pid: worker_env if pid == "222" else {}),
                    patch.object(migration, "application_data_dir", return_value=data),
-                   patch.object(migration, "download", side_effect=lambda url, limit: metadata if "api.github.com" in url else content),
+                   patch.object(migration, "download", side_effect=lambda url, limit: (
+                       download_urls.append(url), metadata if "api.github.com" in url else content)[1]),
                    patch.object(migration, "command", side_effect=command),
                    patch.object(migration.subprocess, "run"), patch.object(migration.os, "chown"),
                    patch.object(migration, "wait_ready", side_effect=RuntimeError("synthetic readiness failure") if fail_ready else None)]
+        self.download_urls = download_urls
         for item in patches:
             item.start()
             self.addCleanup(item.stop)
@@ -135,6 +138,11 @@ class MigrationTests(unittest.TestCase):
             self.assertIn("OPENAI_REAUTH_CONCURRENCY=4", dropin)
             self.assertEqual((base / "data/credential-worker/totp-recovery/key.bin").read_bytes(), b"synthetic-key")
             self.assertTrue((base / "old-journal/history.enc").is_file())
+            self.assertEqual(self.download_urls[0],
+                             "https://api.github.com/repos/c4lnn/sub2api/releases/tags/v2026.11.17")
+            self.assertEqual(self.download_urls[1],
+                             "https://github.com/c4lnn/sub2api/releases/download/v2026.11.17/sub2api-reauth_2026.11.17_linux_" +
+                             {"x86_64": "amd64", "aarch64": "arm64"}.get(os.uname().machine, "unsupported") + ".tar.gz")
             migration.subprocess.run.assert_called_once()
 
     def test_failure_restores_sidecar_and_retains_both_journals(self):

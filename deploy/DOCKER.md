@@ -1,4 +1,4 @@
-# Sub2API Docker Image
+# Sub2API GHCR Image
 
 Sub2API is an AI API Gateway Platform for distributing and managing AI product subscription API quotas.
 
@@ -10,7 +10,7 @@ docker run -d \
   -p 8080:8080 \
   -e DATABASE_URL="postgres://user:pass@host:5432/sub2api" \
   -e REDIS_URL="redis://host:6379" \
-  weishaw/sub2api:latest
+  ghcr.io/c4lnn/sub2api:latest
 ```
 
 ## Docker Compose
@@ -20,7 +20,7 @@ version: '3.8'
 
 services:
   sub2api:
-    image: weishaw/sub2api:latest
+    image: ghcr.io/c4lnn/sub2api:latest
     ports:
       - "8080:8080"
     environment:
@@ -80,11 +80,13 @@ Docker restores existing containers after a host restart.
 ## Tags
 
 - `latest` - Latest stable release
-- `x.y.z` - Specific version
-- `x.y` - Latest patch of minor version
-- `x` - Latest minor of major version
+- `2026.11.17` - Specific three-part release version (without the Git tag's `v`)
+- `2026.11` - Latest stable release in that two-part series
+- `2026` - Latest stable release in that first-part series
+
+Existing deployments must change their local application image explicitly; updating this template does not recreate running services. See [first deployment and recovery boundaries](README.md#本-fork-的发行迁移与首次部署) before switching sources or rolling back.
 
 ## Links
 
-- [GitHub Repository](https://github.com/weishaw/sub2api)
-- [Documentation](https://github.com/weishaw/sub2api#readme)
+- [GitHub Repository](https://github.com/c4lnn/sub2api)
+- [Documentation](https://github.com/c4lnn/sub2api#readme)

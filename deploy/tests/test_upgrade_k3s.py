@@ -76,35 +76,47 @@ class UpgradeTests(unittest.TestCase):
 
     def test_annotated_tag_resolves_to_commit(self):
         responses = [
-            {'tag_name': 'v2.9.6', 'draft': False, 'prerelease': False},
+            {'tag_name': 'v2026.11.17', 'draft': False, 'prerelease': False},
             {'object': {'type': 'tag', 'sha': 'a' * 40}},
             {'object': {'type': 'commit', 'sha': 'b' * 40}}]
         with patch.object(u, 'api', side_effect=responses):
-            self.assertEqual(u.resolve_release('v2.9.6'), ('v2.9.6', 'b' * 40))
+            self.assertEqual(u.resolve_release('v2026.11.17'), ('v2026.11.17', 'b' * 40))
+
+    def test_github_release_api_uses_fork_default(self):
+        responses = [
+            json.dumps({'tag_name': 'v2026.11.17', 'draft': False, 'prerelease': False}).encode(),
+            json.dumps({'object': {'type': 'commit', 'sha': 'a' * 40}}).encode(),
+        ]
+        with patch.object(u, 'fetch', side_effect=responses) as fetch:
+            self.assertEqual(u.resolve_release('v2026.11.17'), ('v2026.11.17', 'a' * 40))
+        self.assertEqual(fetch.call_args_list[0].args[0],
+                         'https://api.github.com/repos/c4lnn/sub2api/releases/tags/v2026.11.17')
+        self.assertEqual(fetch.call_args_list[1].args[0],
+                         'https://api.github.com/repos/c4lnn/sub2api/git/ref/tags/v2026.11.17')
 
     def test_unpublished_release_rejected(self):
         for key in ('draft', 'prerelease'):
-            release = {'tag_name': 'v2.9.6', 'draft': False, 'prerelease': False, key: True}
+            release = {'tag_name': 'v2026.11.17', 'draft': False, 'prerelease': False, key: True}
             with patch.object(u, 'api', return_value=release), self.assertRaises(ValueError):
                 u.resolve_release('latest')
 
     def test_version_matches_exact_commit(self):
-        u.verify_version('Sub2API 2.9.6 (commit: ' + 'a' * 40 + ', built: now)', 'v2.9.6', 'a' * 40)
+        u.verify_version('Sub2API 2026.11.17 (commit: ' + 'a' * 40 + ', built: now)', 'v2026.11.17', 'a' * 40)
         with self.assertRaises(ValueError):
-            u.verify_version('Sub2API 2.9.6 (commit: ' + 'b' * 40 + ', built: now)', 'v2.9.6', 'a' * 40)
+            u.verify_version('Sub2API 2026.11.17 (commit: ' + 'b' * 40 + ', built: now)', 'v2026.11.17', 'a' * 40)
 
     def test_registry_image_revision_mismatch_rejected(self):
         config = json.dumps({'os': 'linux', 'architecture': 'amd64', 'config': {'Labels': {
-            'org.opencontainers.image.version': '2.9.6', 'org.opencontainers.image.revision': 'b' * 40}}}).encode()
+            'org.opencontainers.image.version': '2026.11.17', 'org.opencontainers.image.revision': 'b' * 40}}}).encode()
         digest = 'sha256:' + u.hashlib.sha256(config).hexdigest()
         manifest = json.dumps({'config': {'digest': digest}}).encode()
         with patch.object(u, 'fetch', side_effect=[b'{"token":"mock"}', manifest, config]), self.assertRaises(ValueError):
-            u.resolve_image('v2.9.6', 'amd64', 'a' * 40)
+            u.resolve_image('v2026.11.17', 'amd64', 'a' * 40)
 
     def test_registry_digest_mismatch_rejected(self):
         manifest = json.dumps({'config': {'digest': 'sha256:' + '0' * 64}}).encode()
         with patch.object(u, 'fetch', side_effect=[b'{"token":"mock"}', manifest, b'{}']), self.assertRaises(ValueError):
-            u.resolve_image('v2.9.6', 'amd64', 'a' * 40)
+            u.resolve_image('v2026.11.17', 'amd64', 'a' * 40)
 
 class RolloutTests(unittest.TestCase):
     def scenario(self, failure=None, no_op=False):
@@ -120,7 +132,7 @@ class RolloutTests(unittest.TestCase):
         if no_op:
             state['spec']['template'] = copy.deepcopy(desired)
         mutations = []
-        version = 'Sub2API 2.9.6 (commit: ' + 'a' * 40 + ', built: now)'
+        version = 'Sub2API 2026.11.17 (commit: ' + 'a' * 40 + ', built: now)'
         rollouts = 0
 
         def fake_run(args, timeout=60):
@@ -167,13 +179,13 @@ class RolloutTests(unittest.TestCase):
             raise AssertionError(args)
 
         with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
-            stack.enter_context(patch.object(u.sys, 'argv', ['upgrade', '--backup-root', directory, '--version', 'v2.9.6']))
+            stack.enter_context(patch.object(u.sys, 'argv', ['upgrade', '--backup-root', directory, '--version', 'v2026.11.17']))
             stack.enter_context(patch.object(u.os, 'geteuid', return_value=0))
             stack.enter_context(patch.object(u.fcntl, 'flock'))
             stack.enter_context(patch.object(u.Path, 'mkdir'))
             stack.enter_context(patch('builtins.open', mock_open()))
             stack.enter_context(patch.object(u, 'run', side_effect=fake_run))
-            stack.enter_context(patch.object(u, 'resolve_release', return_value=('v2.9.6', 'a' * 40)))
+            stack.enter_context(patch.object(u, 'resolve_release', return_value=('v2026.11.17', 'a' * 40)))
             stack.enter_context(patch.object(u, 'resolve_image', return_value=image))
             if failure:
                 with self.assertRaises((RuntimeError, ValueError)):

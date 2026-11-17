@@ -25,6 +25,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       shell: ${{ steps.select.outputs['shell'] }}
+      shell-compose: ${{ steps.select.outputs['shell-compose'] }}
       test: ${{ steps.select.outputs['test'] }}
       frontend: ${{ steps.select.outputs['frontend'] }}
       golangci-lint: ${{ steps.select.outputs['golangci-lint'] }}
@@ -60,9 +61,21 @@ jobs:
           /bin/bash -n deploy/apple-container.sh
           /bin/bash deploy/tests/apple-container-test.sh
           /bin/sh deploy/tests/docker-compose-security-test.sh
-          /bin/sh deploy/tests/docker-compose-gateway-env-test.sh
           /bin/sh deploy/tests/docker-runtime-resources-test.sh
           /bin/sh deploy/test-caddyfile-cache.sh
+
+  shell-compose:
+    needs: changes
+    if: needs.changes.outputs['shell-compose'] == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact candidate head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+      - name: Check Docker Compose gateway environment
+        run: /bin/sh deploy/tests/docker-compose-gateway-env-test.sh
 
   test:
     needs: changes

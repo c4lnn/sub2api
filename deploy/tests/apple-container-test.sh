@@ -34,7 +34,12 @@ export SUB2API_ENV_FILE="${ENV_FILE}"
 mkdir -p "${STATE_DIR}"
 
 "${SCRIPT}" init
-[[ "$(stat -f '%Lp' "${ENV_FILE}")" == "600" ]] || fail "init did not create a mode-600 env file"
+# Read to EOF instead of `grep -q`: early exit closes the pipe, tr then dies on
+# SIGPIPE (141) and `pipefail` reports a match as a failure.
+tr -d '\r' <"${ENV_FILE}" | grep -Fx 'APPLE_CONTAINER_SUB2API_IMAGE=ghcr.io/c4lnn/sub2api:latest' >/dev/null || \
+    fail "init did not configure the fork image by default"
+env_mode="$(stat -c '%a' "${ENV_FILE}" 2>/dev/null || stat -f '%Lp' "${ENV_FILE}")"
+[[ "${env_mode}" == "600" ]] || fail "init did not create a mode-600 env file"
 grep -q '^POSTGRES_PASSWORD=change_this_secure_password$' "${ENV_FILE}" && fail "init retained the placeholder password"
 
 chmod 644 "${ENV_FILE}"
@@ -58,11 +63,20 @@ grep -q '^runtime_binary="$runtime_dir/sub2api"$' "${STATE_DIR}/create-arguments
     fail "app container does not run its updatable binary from persistent storage"
 grep -q '^APPLE_CONTAINER_SUB2API_IMAGE_ID=fake-image-id$' "${STATE_DIR}/env-files/sub2api-apple" || \
     fail "app container did not receive the inspected base image ID"
+grep -Fxq 'ghcr.io/c4lnn/sub2api:latest' "${STATE_DIR}/create-arguments/sub2api-apple" || \
+    fail "app container did not use the default fork image"
 [[ ! -s "${STATE_DIR}/network-subnets/sub2api-apple" ]] || \
     fail "up passed a subnet when APPLE_CONTAINER_NETWORK_SUBNET was unset"
 "${SCRIPT}" status >/dev/null
 
 "${SCRIPT}" up --recreate
+grep -v '^APPLE_CONTAINER_SUB2API_IMAGE=' "${ENV_FILE}" >"${ENV_FILE}.override"
+printf 'APPLE_CONTAINER_SUB2API_IMAGE=ghcr.io/example-org/sub2api:2026.11.17\n' >>"${ENV_FILE}.override"
+mv "${ENV_FILE}.override" "${ENV_FILE}"
+chmod 600 "${ENV_FILE}"
+"${SCRIPT}" up --recreate
+grep -Fxq 'ghcr.io/example-org/sub2api:2026.11.17' "${STATE_DIR}/create-arguments/sub2api-apple" || \
+    fail "app container did not honor APPLE_CONTAINER_SUB2API_IMAGE override"
 assert_exists "${STATE_DIR}/running/sub2api-apple"
 "${SCRIPT}" down
 assert_missing "${STATE_DIR}/running/sub2api-apple"

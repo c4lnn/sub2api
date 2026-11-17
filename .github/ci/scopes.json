@@ -8,6 +8,15 @@
       "Dockerfile*",
       ".dockerignore"
     ],
+    "shell-compose": [
+      "deploy/*.sh",
+      "deploy/tests/*.sh",
+      "deploy/.env.example",
+      "deploy/docker-compose*",
+      "deploy/Dockerfile*",
+      "Dockerfile*",
+      ".dockerignore"
+    ],
     "test": [
       "backend/**",
       "Makefile",

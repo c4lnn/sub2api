@@ -190,7 +190,11 @@ func TestExcelBPSImagePolicyForwardCompactAndContinue(t *testing.T) {
 		for _, stream := range []bool{false, true} {
 			for _, failure := range []string{"", "compact_reject", "compact_failed", "compact_eof", "generation_reject", "invalid_compaction"} {
 				t.Run(fmt.Sprintf("%s/stream=%v/%s", mode, stream, failure), func(t *testing.T) {
+					// The relay branch writes bps-images under DATA_DIR; without this
+					// it falls back to the package-relative ./data in the checkout.
+					t.Setenv("DATA_DIR", t.TempDir())
 					svc := openAIClientToolsTestService(nil)
+					t.Cleanup(func() { _ = svc.CloseExcelBPSImages() })
 					svc.cache = newImagePolicyMemoryCache()
 					repo := &excelBPSImageSettingsRepo{values: map[string]string{SettingKeyExcelBPSImageRelayEnabled: "true", SettingKeyExcelBPSImageMode: mode, SettingKeyExcelBPSImageBaseURL: "https://images.example", SettingKeyExcelBPSImageLimitPolicy: "auto_compact"}}
 					svc.settingService = NewSettingService(repo, svc.cfg)

@@ -43,5 +43,48 @@ do
     fi
   done < "$gateway_variables"
 done
+python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+
+compose_files = (
+    Path("deploy/docker-compose.yml"),
+    Path("deploy/docker-compose.local.yml"),
+    Path("deploy/docker-compose.standalone.yml"),
+)
+key = "GATEWAY_DISABLE_ENCRYPTED_AGENT_OWNER_BINDING"
+with tempfile.TemporaryDirectory(prefix="compose-source-contract-") as directory:
+    empty_env = Path(directory) / ".env"
+    empty_env.write_text("")
+    for path in compose_files:
+        for override, expected in ((None, "false"), ("true", "true")):
+            env = dict(
+                os.environ,
+                POSTGRES_PASSWORD="compose-test-password",
+                DATABASE_HOST="postgres",
+                DATABASE_PASSWORD="compose-test-password",
+                REDIS_HOST="redis",
+            )
+            env.pop(key, None)
+            if override is not None:
+                env[key] = override
+            result = subprocess.run(
+                ["docker", "compose", "--env-file", str(empty_env), "-f", str(path),
+                 "config", "--format", "json"],
+                env=env, capture_output=True, text=True,
+            )
+            assert result.returncode == 0, f"{path}: docker compose config failed:\n{result.stderr}"
+            service = json.loads(result.stdout)["services"]["sub2api"]
+            assert service["image"] == "ghcr.io/c4lnn/sub2api:latest", \
+                f"{path}: unexpected application image {service['image']!r}"
+            actual = service["environment"][key]
+            assert actual == expected, f"{path}: {key}={actual!r}, expected {expected!r}"
+
+print("docker compose source image and gateway environment checks passed")
+PY
+
 
 printf 'docker compose Gateway environment test passed\n'

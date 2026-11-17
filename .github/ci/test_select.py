@@ -72,6 +72,18 @@ class SelectionTests(unittest.TestCase):
         self.write('frontend/pnpm-lock.yaml', 'new dependency')
         self.assertTrue(self.select(self.save())['frontend'][0])
 
+    def test_gateway_env_example_change_selects_compose_check(self):
+        filename = 'backend-ci.yml'
+        workflow = f'.github/workflows/{filename}'
+        self.write(workflow, (REPO / workflow).read_text(encoding='utf-8'))
+        scopes = json.loads((REPO / '.github/ci/scopes.json').read_text())[filename]
+        self.base = self.save()
+
+        self.write('deploy/.env.example', 'GATEWAY_DISABLE_ENCRYPTED_AGENT_OWNER_BINDING=false\n')
+        result = ci.select(filename, scopes, 'pull_request', self.event(), self.save())
+        self.assertTrue(result['shell-compose'][0])
+        self.assertFalse(result['shell'][0])
+
     def test_trigger_edits_skip_but_test_command_edits_run(self):
         p = self.root / '.github/workflows/main.yml'
         p.write_text(p.read_text() + 'on:\n  pull_request:\n')

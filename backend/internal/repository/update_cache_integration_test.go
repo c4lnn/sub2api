@@ -3,10 +3,13 @@
 package repository
 
 import (
+	"context"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -22,9 +25,60 @@ func (s *UpdateCacheSuite) SetupTest() {
 	s.cache = NewUpdateCache(s.rdb).(*updateCache)
 }
 
+type failingUpdateReleaseClient struct {
+	latestRepo string
+}
+
+func (c *failingUpdateReleaseClient) FetchLatestRelease(_ context.Context, repo string) (*service.GitHubRelease, error) {
+	c.latestRepo = repo
+	return nil, errors.New("release source unavailable")
+}
+
+func (*failingUpdateReleaseClient) FetchRecentReleases(context.Context, string, int) ([]*service.GitHubRelease, error) {
+	return nil, errors.New("not used")
+}
+
+func (*failingUpdateReleaseClient) DownloadFile(context.Context, string, string, int64) error {
+	return errors.New("not used")
+}
+
+func (*failingUpdateReleaseClient) FetchChecksumFile(context.Context, string) ([]byte, error) {
+	return nil, errors.New("not used")
+}
+
+func (s *UpdateCacheSuite) TestCheckUpdateFailureDoesNotReuseLegacyCache() {
+	legacyInfo := `{"latest":"99.0.0","release_info":{"html_url":"https://github.com/legacy/repo/releases/tag/v99.0.0"},"timestamp":` + strconv.FormatInt(time.Now().Unix(), 10) + `}`
+	require.NoError(s.T(), s.rdb.Set(s.ctx, "update:latest", legacyInfo, 5*time.Minute).Err())
+	githubClient := &failingUpdateReleaseClient{}
+	updateService := service.NewUpdateService(s.cache, githubClient, "2026.11.17", "release")
+
+	info, err := updateService.CheckUpdate(s.ctx, true)
+
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), "c4lnn/sub2api", githubClient.latestRepo)
+	require.Equal(s.T(), "2026.11.17", info.LatestVersion)
+	require.False(s.T(), info.HasUpdate)
+	require.Contains(s.T(), info.Warning, "release source unavailable")
+	require.False(s.T(), info.Cached)
+	storedLegacy, err := s.rdb.Get(s.ctx, "update:latest").Result()
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), legacyInfo, storedLegacy)
+}
+
 func (s *UpdateCacheSuite) TestGetUpdateInfo_Missing() {
 	_, err := s.cache.GetUpdateInfo(s.ctx)
 	require.True(s.T(), errors.Is(err, redis.Nil), "expected redis.Nil for missing update info")
+}
+
+func (s *UpdateCacheSuite) TestGetUpdateInfo_IgnoresLegacyKey() {
+	require.NoError(s.T(), s.rdb.Set(s.ctx, "update:latest", "legacy-release", 5*time.Minute).Err())
+
+	_, err := s.cache.GetUpdateInfo(s.ctx)
+
+	require.True(s.T(), errors.Is(err, redis.Nil), "legacy update cache must not be reused")
+	legacy, legacyErr := s.rdb.Get(s.ctx, "update:latest").Result()
+	require.NoError(s.T(), legacyErr)
+	require.Equal(s.T(), "legacy-release", legacy)
 }
 
 func (s *UpdateCacheSuite) TestSetAndGetUpdateInfo() {
