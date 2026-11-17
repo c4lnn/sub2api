@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitordisplaygroup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 )
 
@@ -43,6 +44,10 @@ type ChannelMonitor struct {
 	ExtraModels []string `json:"extra_models,omitempty"`
 	// GroupName holds the value of the "group_name" field.
 	GroupName string `json:"group_name,omitempty"`
+	// DisplayGroupID holds the value of the "display_group_id" field.
+	DisplayGroupID *int64 `json:"display_group_id,omitempty"`
+	// SortOrder holds the value of the "sort_order" field.
+	SortOrder int `json:"sort_order,omitempty"`
 	// Enabled holds the value of the "enabled" field.
 	Enabled bool `json:"enabled,omitempty"`
 	// IntervalSeconds holds the value of the "interval_seconds" field.
@@ -69,6 +74,8 @@ type ChannelMonitor struct {
 
 // ChannelMonitorEdges holds the relations/edges for other nodes in the graph.
 type ChannelMonitorEdges struct {
+	// DisplayGroup holds the value of the display_group edge.
+	DisplayGroup *ChannelMonitorDisplayGroup `json:"display_group,omitempty"`
 	// History holds the value of the history edge.
 	History []*ChannelMonitorHistory `json:"history,omitempty"`
 	// DailyRollups holds the value of the daily_rollups edge.
@@ -77,13 +84,24 @@ type ChannelMonitorEdges struct {
 	RequestTemplate *ChannelMonitorRequestTemplate `json:"request_template,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [4]bool
+}
+
+// DisplayGroupOrErr returns the DisplayGroup value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e ChannelMonitorEdges) DisplayGroupOrErr() (*ChannelMonitorDisplayGroup, error) {
+	if e.DisplayGroup != nil {
+		return e.DisplayGroup, nil
+	} else if e.loadedTypes[0] {
+		return nil, &NotFoundError{label: channelmonitordisplaygroup.Label}
+	}
+	return nil, &NotLoadedError{edge: "display_group"}
 }
 
 // HistoryOrErr returns the History value or an error if the edge
 // was not loaded in eager-loading.
 func (e ChannelMonitorEdges) HistoryOrErr() ([]*ChannelMonitorHistory, error) {
-	if e.loadedTypes[0] {
+	if e.loadedTypes[1] {
 		return e.History, nil
 	}
 	return nil, &NotLoadedError{edge: "history"}
@@ -92,7 +110,7 @@ func (e ChannelMonitorEdges) HistoryOrErr() ([]*ChannelMonitorHistory, error) {
 // DailyRollupsOrErr returns the DailyRollups value or an error if the edge
 // was not loaded in eager-loading.
 func (e ChannelMonitorEdges) DailyRollupsOrErr() ([]*ChannelMonitorDailyRollup, error) {
-	if e.loadedTypes[1] {
+	if e.loadedTypes[2] {
 		return e.DailyRollups, nil
 	}
 	return nil, &NotLoadedError{edge: "daily_rollups"}
@@ -103,7 +121,7 @@ func (e ChannelMonitorEdges) DailyRollupsOrErr() ([]*ChannelMonitorDailyRollup, 
 func (e ChannelMonitorEdges) RequestTemplateOrErr() (*ChannelMonitorRequestTemplate, error) {
 	if e.RequestTemplate != nil {
 		return e.RequestTemplate, nil
-	} else if e.loadedTypes[2] {
+	} else if e.loadedTypes[3] {
 		return nil, &NotFoundError{label: channelmonitorrequesttemplate.Label}
 	}
 	return nil, &NotLoadedError{edge: "request_template"}
@@ -118,7 +136,7 @@ func (*ChannelMonitor) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case channelmonitor.FieldEnabled:
 			values[i] = new(sql.NullBool)
-		case channelmonitor.FieldID, channelmonitor.FieldAccountID, channelmonitor.FieldIntervalSeconds, channelmonitor.FieldJitterSeconds, channelmonitor.FieldCreatedBy, channelmonitor.FieldTemplateID:
+		case channelmonitor.FieldID, channelmonitor.FieldAccountID, channelmonitor.FieldDisplayGroupID, channelmonitor.FieldSortOrder, channelmonitor.FieldIntervalSeconds, channelmonitor.FieldJitterSeconds, channelmonitor.FieldCreatedBy, channelmonitor.FieldTemplateID:
 			values[i] = new(sql.NullInt64)
 		case channelmonitor.FieldName, channelmonitor.FieldProvider, channelmonitor.FieldCheckMode, channelmonitor.FieldAPIMode, channelmonitor.FieldEndpoint, channelmonitor.FieldAPIKeyEncrypted, channelmonitor.FieldPrimaryModel, channelmonitor.FieldGroupName, channelmonitor.FieldBodyOverrideMode:
 			values[i] = new(sql.NullString)
@@ -220,6 +238,19 @@ func (_m *ChannelMonitor) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.GroupName = value.String
 			}
+		case channelmonitor.FieldDisplayGroupID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field display_group_id", values[i])
+			} else if value.Valid {
+				_m.DisplayGroupID = new(int64)
+				*_m.DisplayGroupID = value.Int64
+			}
+		case channelmonitor.FieldSortOrder:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field sort_order", values[i])
+			} else if value.Valid {
+				_m.SortOrder = int(value.Int64)
+			}
 		case channelmonitor.FieldEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field enabled", values[i])
@@ -291,6 +322,11 @@ func (_m *ChannelMonitor) assignValues(columns []string, values []any) error {
 // This includes values selected through modifiers, order, etc.
 func (_m *ChannelMonitor) Value(name string) (ent.Value, error) {
 	return _m.selectValues.Get(name)
+}
+
+// QueryDisplayGroup queries the "display_group" edge of the ChannelMonitor entity.
+func (_m *ChannelMonitor) QueryDisplayGroup() *ChannelMonitorDisplayGroupQuery {
+	return NewChannelMonitorClient(_m.config).QueryDisplayGroup(_m)
 }
 
 // QueryHistory queries the "history" edge of the ChannelMonitor entity.
@@ -367,6 +403,14 @@ func (_m *ChannelMonitor) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("group_name=")
 	builder.WriteString(_m.GroupName)
+	builder.WriteString(", ")
+	if v := _m.DisplayGroupID; v != nil {
+		builder.WriteString("display_group_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("sort_order=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SortOrder))
 	builder.WriteString(", ")
 	builder.WriteString("enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Enabled))

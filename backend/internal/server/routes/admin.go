@@ -1131,9 +1131,19 @@ func registerChannelMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers, s
 		monitors.GET("/:id", h.Admin.ChannelMonitor.Get)
 		monitors.POST("/:id/duplicate", h.Admin.ChannelMonitor.Duplicate)
 		monitors.PUT("/:id", h.Admin.ChannelMonitor.Update)
+		monitors.PUT("/:id/display", h.Admin.ChannelMonitor.UpdateDisplay)
 		monitors.DELETE("/:id", h.Admin.ChannelMonitor.Delete)
 		monitors.POST("/:id/run", h.Admin.ChannelMonitor.Run)
 		monitors.GET("/:id/history", h.Admin.ChannelMonitor.History)
+	}
+
+	groups := admin.Group("/channel-monitor-display-groups")
+	groups.Use(guard)
+	{
+		groups.GET("", h.Admin.ChannelMonitor.ListDisplayGroups)
+		groups.POST("", h.Admin.ChannelMonitor.CreateDisplayGroup)
+		groups.PUT("/:id", h.Admin.ChannelMonitor.UpdateDisplayGroup)
+		groups.DELETE("/:id", h.Admin.ChannelMonitor.DeleteDisplayGroup)
 	}
 
 	templates := admin.Group("/channel-monitor-templates")

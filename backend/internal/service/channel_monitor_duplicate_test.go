@@ -237,3 +237,27 @@ func TestChannelMonitorDuplicateOperationMetadataKeyCannotBeSubmittedAsHeader(t 
 
 	require.Error(t, err)
 }
+
+func TestChannelMonitorDuplicateInheritsDisplayAndReplays(t *testing.T) {
+	for _, groupID := range []*int64{nil, int64Ptr(9)} {
+		repo := &duplicateChannelMonitorRepoStub{source: &ChannelMonitor{
+			ID: 42, Name: "source", APIKey: "OLD:secret", GroupName: "legacy",
+			DisplayGroupID: groupID, SortOrder: 17, Enabled: true,
+		}}
+		svc := NewChannelMonitorService(repo, &duplicateChannelMonitorEncryptor{})
+		first, err := svc.Duplicate(context.Background(), 42, 1, "admin:1", "display-copy")
+		require.NoError(t, err)
+		require.Equal(t, groupID, first.DisplayGroupID)
+		require.Equal(t, 17, first.SortOrder)
+		require.Equal(t, "legacy", first.GroupName)
+		require.False(t, first.Enabled)
+		if groupID != nil {
+			require.NotSame(t, groupID, first.DisplayGroupID)
+		}
+		retry, err := svc.Duplicate(context.Background(), 42, 1, "admin:1", "display-copy")
+		require.NoError(t, err)
+		require.Equal(t, first.ID, retry.ID)
+		require.Equal(t, first.DisplayGroupID, retry.DisplayGroupID)
+		require.Len(t, repo.created, 1)
+	}
+}

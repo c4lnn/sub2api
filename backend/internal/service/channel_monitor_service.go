@@ -26,6 +26,14 @@ type ChannelMonitorRepository interface {
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, params ChannelMonitorListParams) ([]*ChannelMonitor, int64, error)
 	FindByDuplicateOperationID(ctx context.Context, operationID string) (*ChannelMonitor, error)
+	ListDisplayGroups(ctx context.Context) ([]*ChannelMonitorDisplayGroup, error)
+	GetDisplayGroup(ctx context.Context, id int64) (*ChannelMonitorDisplayGroup, error)
+	CreateDisplayGroup(ctx context.Context, group *ChannelMonitorDisplayGroup) error
+	UpdateDisplayGroup(ctx context.Context, id int64, params ChannelMonitorDisplayGroupUpdateParams) (*ChannelMonitorDisplayGroup, error)
+	DeleteDisplayGroup(ctx context.Context, id int64) error
+	UpdateDisplay(ctx context.Context, id int64, params ChannelMonitorDisplayUpdateParams) (*ChannelMonitor, error)
+	ListPublished(ctx context.Context) ([]*ChannelMonitor, error)
+	GetPublishedByID(ctx context.Context, id int64) (*ChannelMonitor, error)
 
 	// 调度器辅助
 	ListEnabled(ctx context.Context) ([]*ChannelMonitor, error)
@@ -118,6 +126,9 @@ func (s *ChannelMonitorService) probeRuntime(ctx context.Context) ChannelMonitor
 // List 列表查询（支持 provider/enabled/search 过滤 + 分页）。
 // 返回的 ChannelMonitor.APIKey 已解密为明文，handler 层负责脱敏。
 func (s *ChannelMonitorService) List(ctx context.Context, params ChannelMonitorListParams) ([]*ChannelMonitor, int64, error) {
+	if params.DisplayGroupID != nil && *params.DisplayGroupID < 0 {
+		return nil, 0, ErrMonitorDisplayGroupID
+	}
 	if params.Page < 1 {
 		params.Page = 1
 	}
@@ -149,6 +160,12 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 	if err := validateCreateParams(p); err != nil {
 		return nil, err
 	}
+	if err := s.validateDisplayGroup(ctx, p.DisplayGroupID); err != nil {
+		return nil, err
+	}
+	if err := validateMonitorSortOrder(p.SortOrder); err != nil {
+		return nil, err
+	}
 	if err := validateBodyModeForProtocol(p.Provider, p.APIMode, p.BodyOverrideMode, p.BodyOverride); err != nil {
 		return nil, err
 	}
@@ -172,6 +189,8 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		PrimaryModel:     normalizeMonitorPrimaryModel(p.Provider, checkMode, p.PrimaryModel),
 		ExtraModels:      normalizeModels(p.ExtraModels),
 		GroupName:        strings.TrimSpace(p.GroupName),
+		DisplayGroupID:   cloneInt64Pointer(p.DisplayGroupID),
+		SortOrder:        p.SortOrder,
 		Enabled:          p.Enabled,
 		IntervalSeconds:  p.IntervalSeconds,
 		JitterSeconds:    p.JitterSeconds,
@@ -239,6 +258,8 @@ func (s *ChannelMonitorService) Duplicate(
 		PrimaryModel:         source.PrimaryModel,
 		ExtraModels:          append([]string{}, source.ExtraModels...),
 		GroupName:            source.GroupName,
+		DisplayGroupID:       cloneInt64Pointer(source.DisplayGroupID),
+		SortOrder:            source.SortOrder,
 		Enabled:              false,
 		IntervalSeconds:      source.IntervalSeconds,
 		JitterSeconds:        source.JitterSeconds,

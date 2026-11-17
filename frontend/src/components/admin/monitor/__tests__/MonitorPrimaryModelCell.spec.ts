@@ -26,6 +26,8 @@ function makeRow(overrides: Partial<ChannelMonitor> = {}): ChannelMonitor {
     primary_model: 'quota',
     extra_models: [],
     group_name: '',
+    display_group_id: null,
+    sort_order: 0,
     enabled: true,
     interval_seconds: 60,
     jitter_seconds: 0,

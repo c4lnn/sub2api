@@ -639,6 +639,7 @@ var (
 		{Name: "primary_model", Type: field.TypeString, Size: 200},
 		{Name: "extra_models", Type: field.TypeJSON},
 		{Name: "group_name", Type: field.TypeString, Nullable: true, Size: 100, Default: ""},
+		{Name: "sort_order", Type: field.TypeInt, Default: 0},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "interval_seconds", Type: field.TypeInt},
 		{Name: "jitter_seconds", Type: field.TypeInt, Default: 0},
@@ -647,6 +648,7 @@ var (
 		{Name: "extra_headers", Type: field.TypeJSON},
 		{Name: "body_override_mode", Type: field.TypeString, Size: 10, Default: "off"},
 		{Name: "body_override", Type: field.TypeJSON, Nullable: true},
+		{Name: "display_group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "template_id", Type: field.TypeInt64, Nullable: true},
 	}
 	// ChannelMonitorsTable holds the schema information for the "channel_monitors" table.
@@ -656,8 +658,14 @@ var (
 		PrimaryKey: []*schema.Column{ChannelMonitorsColumns[0]},
 		ForeignKeys: []*schema.ForeignKey{
 			{
+				Symbol:     "channel_monitors_channel_monitor_display_groups_display_group",
+				Columns:    []*schema.Column{ChannelMonitorsColumns[22]},
+				RefColumns: []*schema.Column{ChannelMonitorDisplayGroupsColumns[0]},
+				OnDelete:   schema.Restrict,
+			},
+			{
 				Symbol:     "channel_monitors_channel_monitor_request_templates_request_template",
-				Columns:    []*schema.Column{ChannelMonitorsColumns[21]},
+				Columns:    []*schema.Column{ChannelMonitorsColumns[23]},
 				RefColumns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -666,7 +674,7 @@ var (
 			{
 				Name:    "channelmonitor_enabled_last_checked_at",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[13], ChannelMonitorsColumns[16]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[14], ChannelMonitorsColumns[17]},
 			},
 			{
 				Name:    "channelmonitor_provider",
@@ -686,12 +694,17 @@ var (
 			{
 				Name:    "channelmonitor_template_id",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[21]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[23]},
 			},
 			{
 				Name:    "channelmonitor_account_id",
 				Unique:  false,
 				Columns: []*schema.Column{ChannelMonitorsColumns[6]},
+			},
+			{
+				Name:    "channelmonitor_display_group_id_sort_order_id",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorsColumns[22], ChannelMonitorsColumns[13], ChannelMonitorsColumns[0]},
 			},
 		},
 	}
@@ -738,6 +751,20 @@ var (
 				Columns: []*schema.Column{ChannelMonitorDailyRollupsColumns[2]},
 			},
 		},
+	}
+	// ChannelMonitorDisplayGroupsColumns holds the columns for the "channel_monitor_display_groups" table.
+	ChannelMonitorDisplayGroupsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Unique: true, Size: 100},
+		{Name: "sort_order", Type: field.TypeInt, Default: 0},
+	}
+	// ChannelMonitorDisplayGroupsTable holds the schema information for the "channel_monitor_display_groups" table.
+	ChannelMonitorDisplayGroupsTable = &schema.Table{
+		Name:       "channel_monitor_display_groups",
+		Columns:    ChannelMonitorDisplayGroupsColumns,
+		PrimaryKey: []*schema.Column{ChannelMonitorDisplayGroupsColumns[0]},
 	}
 	// ChannelMonitorHistoriesColumns holds the columns for the "channel_monitor_histories" table.
 	ChannelMonitorHistoriesColumns = []*schema.Column{
@@ -2385,6 +2412,7 @@ var (
 		BatchImageJobsTable,
 		ChannelMonitorsTable,
 		ChannelMonitorDailyRollupsTable,
+		ChannelMonitorDisplayGroupsTable,
 		ChannelMonitorHistoriesTable,
 		ChannelMonitorRequestTemplatesTable,
 		CompositeModelRoutesTable,
@@ -2464,13 +2492,23 @@ func init() {
 	BatchImageJobsTable.Annotation = &entsql.Annotation{
 		Table: "batch_image_jobs",
 	}
-	ChannelMonitorsTable.ForeignKeys[0].RefTable = ChannelMonitorRequestTemplatesTable
+	ChannelMonitorsTable.ForeignKeys[0].RefTable = ChannelMonitorDisplayGroupsTable
+	ChannelMonitorsTable.ForeignKeys[1].RefTable = ChannelMonitorRequestTemplatesTable
 	ChannelMonitorsTable.Annotation = &entsql.Annotation{
 		Table: "channel_monitors",
+	}
+	ChannelMonitorsTable.Annotation.Checks = map[string]string{
+		"channel_monitors_sort_order_check": "sort_order >= 0",
 	}
 	ChannelMonitorDailyRollupsTable.ForeignKeys[0].RefTable = ChannelMonitorsTable
 	ChannelMonitorDailyRollupsTable.Annotation = &entsql.Annotation{
 		Table: "channel_monitor_daily_rollups",
+	}
+	ChannelMonitorDisplayGroupsTable.Annotation = &entsql.Annotation{
+		Table: "channel_monitor_display_groups",
+	}
+	ChannelMonitorDisplayGroupsTable.Annotation.Checks = map[string]string{
+		"channel_monitor_display_groups_sort_order_check": "sort_order >= 0",
 	}
 	ChannelMonitorHistoriesTable.ForeignKeys[0].RefTable = ChannelMonitorsTable
 	ChannelMonitorHistoriesTable.Annotation = &entsql.Annotation{

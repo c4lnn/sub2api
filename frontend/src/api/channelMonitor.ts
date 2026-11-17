@@ -26,6 +26,10 @@ export interface UserMonitorView {
   name: string
   provider: Provider
   group_name: string
+  display_group_id: number
+  display_group_name: string
+  display_group_sort_order: number
+  sort_order: number
   primary_model: string
   primary_status: MonitorStatus
   primary_latency_ms: number | null
@@ -59,6 +63,10 @@ export interface UserMonitorDetail {
   name: string
   provider: Provider
   group_name: string
+  display_group_id: number
+  display_group_name: string
+  display_group_sort_order: number
+  sort_order: number
   models: UserMonitorModelDetail[]
 }
 

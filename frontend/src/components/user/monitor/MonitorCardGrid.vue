@@ -31,24 +31,36 @@
       :description="t('channelStatus.empty.description')"
     />
 
-    <div
-      v-else
-      class="grid gap-5 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
-    >
-      <MonitorCard
-        v-for="item in items"
-        :key="item.id"
-        :item="item"
-        :window="window"
-        :availability-value="resolveAvailability(item)"
-        :countdown-seconds="countdownSeconds"
-        @click="emit('cardClick', item)"
-      />
+    <div v-else class="space-y-8">
+      <section
+        v-for="group in groups"
+        :key="group.id"
+        :aria-label="group.name"
+        class="min-w-0 space-y-4"
+      >
+        <header>
+          <h2 class="min-w-0 break-words [overflow-wrap:anywhere] text-lg font-semibold text-gray-900 dark:text-gray-100">
+            {{ group.name }}
+          </h2>
+        </header>
+        <div class="grid gap-5 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          <MonitorCard
+            v-for="item in group.items"
+            :key="item.id"
+            :item="item"
+            :window="window"
+            :availability-value="resolveAvailability(item)"
+            :countdown-seconds="countdownSeconds"
+            @click="emit('cardClick', item)"
+          />
+        </div>
+      </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { UserMonitorView, UserMonitorDetail } from '@/api/channelMonitor'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -67,6 +79,27 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+const groups = computed(() => {
+  const byId = new Map<number, { id: number; name: string; sortOrder: number; items: UserMonitorView[] }>()
+  for (const item of props.items) {
+    const group = byId.get(item.display_group_id)
+    if (group) group.items.push(item)
+    else byId.set(item.display_group_id, {
+      id: item.display_group_id,
+      name: item.display_group_name,
+      sortOrder: item.display_group_sort_order,
+      items: [item],
+    })
+  }
+
+  const result = Array.from(byId.values())
+  result.sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
+  for (const group of result) {
+    group.items.sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
+  }
+  return result
+})
 
 function resolveAvailability(item: UserMonitorView): number | null {
   if (props.window === '7d') {

@@ -39,6 +39,10 @@ const (
 	FieldExtraModels = "extra_models"
 	// FieldGroupName holds the string denoting the group_name field in the database.
 	FieldGroupName = "group_name"
+	// FieldDisplayGroupID holds the string denoting the display_group_id field in the database.
+	FieldDisplayGroupID = "display_group_id"
+	// FieldSortOrder holds the string denoting the sort_order field in the database.
+	FieldSortOrder = "sort_order"
 	// FieldEnabled holds the string denoting the enabled field in the database.
 	FieldEnabled = "enabled"
 	// FieldIntervalSeconds holds the string denoting the interval_seconds field in the database.
@@ -57,6 +61,8 @@ const (
 	FieldBodyOverrideMode = "body_override_mode"
 	// FieldBodyOverride holds the string denoting the body_override field in the database.
 	FieldBodyOverride = "body_override"
+	// EdgeDisplayGroup holds the string denoting the display_group edge name in mutations.
+	EdgeDisplayGroup = "display_group"
 	// EdgeHistory holds the string denoting the history edge name in mutations.
 	EdgeHistory = "history"
 	// EdgeDailyRollups holds the string denoting the daily_rollups edge name in mutations.
@@ -65,6 +71,13 @@ const (
 	EdgeRequestTemplate = "request_template"
 	// Table holds the table name of the channelmonitor in the database.
 	Table = "channel_monitors"
+	// DisplayGroupTable is the table that holds the display_group relation/edge.
+	DisplayGroupTable = "channel_monitors"
+	// DisplayGroupInverseTable is the table name for the ChannelMonitorDisplayGroup entity.
+	// It exists in this package in order to avoid circular dependency with the "channelmonitordisplaygroup" package.
+	DisplayGroupInverseTable = "channel_monitor_display_groups"
+	// DisplayGroupColumn is the table column denoting the display_group relation/edge.
+	DisplayGroupColumn = "display_group_id"
 	// HistoryTable is the table that holds the history relation/edge.
 	HistoryTable = "channel_monitor_histories"
 	// HistoryInverseTable is the table name for the ChannelMonitorHistory entity.
@@ -103,6 +116,8 @@ var Columns = []string{
 	FieldPrimaryModel,
 	FieldExtraModels,
 	FieldGroupName,
+	FieldDisplayGroupID,
+	FieldSortOrder,
 	FieldEnabled,
 	FieldIntervalSeconds,
 	FieldJitterSeconds,
@@ -153,6 +168,10 @@ var (
 	DefaultGroupName string
 	// GroupNameValidator is a validator for the "group_name" field. It is called by the builders before save.
 	GroupNameValidator func(string) error
+	// DefaultSortOrder holds the default value on creation for the "sort_order" field.
+	DefaultSortOrder int
+	// SortOrderValidator is a validator for the "sort_order" field. It is called by the builders before save.
+	SortOrderValidator func(int) error
 	// DefaultEnabled holds the default value on creation for the "enabled" field.
 	DefaultEnabled bool
 	// IntervalSecondsValidator is a validator for the "interval_seconds" field. It is called by the builders before save.
@@ -263,6 +282,16 @@ func ByGroupName(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldGroupName, opts...).ToFunc()
 }
 
+// ByDisplayGroupID orders the results by the display_group_id field.
+func ByDisplayGroupID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDisplayGroupID, opts...).ToFunc()
+}
+
+// BySortOrder orders the results by the sort_order field.
+func BySortOrder(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSortOrder, opts...).ToFunc()
+}
+
 // ByEnabled orders the results by the enabled field.
 func ByEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEnabled, opts...).ToFunc()
@@ -298,6 +327,13 @@ func ByBodyOverrideMode(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBodyOverrideMode, opts...).ToFunc()
 }
 
+// ByDisplayGroupField orders the results by display_group field.
+func ByDisplayGroupField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newDisplayGroupStep(), sql.OrderByField(field, opts...))
+	}
+}
+
 // ByHistoryCount orders the results by history count.
 func ByHistoryCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -331,6 +367,13 @@ func ByRequestTemplateField(field string, opts ...sql.OrderTermOption) OrderOpti
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newRequestTemplateStep(), sql.OrderByField(field, opts...))
 	}
+}
+func newDisplayGroupStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(DisplayGroupInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, false, DisplayGroupTable, DisplayGroupColumn),
+	)
 }
 func newHistoryStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(

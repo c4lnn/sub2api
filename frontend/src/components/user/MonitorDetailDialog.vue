@@ -108,11 +108,12 @@ watch(
   () => [props.show, props.monitorId] as const,
   ([show, id], _, onCleanup) => {
     onCleanup(() => { requestVersion++ })
-    if (!show) {
+    if (!show || id == null) {
       detail.value = null
+      loading.value = false
       return
     }
-    if (id != null) void load(id)
+    void load(id)
   },
   { immediate: true },
 )

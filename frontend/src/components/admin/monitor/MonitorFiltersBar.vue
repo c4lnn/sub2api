@@ -22,7 +22,6 @@
         :options="providerFilterOptions"
         :placeholder="t('admin.channelMonitor.allProviders')"
         class="w-44"
-        @change="$emit('reload')"
       />
 
       <Select
@@ -30,7 +29,6 @@
         :options="enabledFilterOptions"
         :placeholder="t('admin.channelMonitor.enabledFilter')"
         class="w-40"
-        @change="$emit('reload')"
       />
     </div>
 

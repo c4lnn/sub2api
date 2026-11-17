@@ -75,6 +75,8 @@ export interface ChannelMonitor {
   primary_model: string
   extra_models: string[]
   group_name: string
+  display_group_id: number | null
+  sort_order: number
   enabled: boolean
   interval_seconds: number
   /** 每次调度在 interval 基础上 ± [0, jitter] 的随机偏移（秒），0 = 固定间隔 */
@@ -116,6 +118,8 @@ export interface ListParams {
   provider?: Provider
   enabled?: boolean
   search?: string
+  /** Omitted = all monitors; 0 = unpublished storage; positive = display group. */
+  display_group_id?: number
 }
 
 export interface ListResponse {
@@ -143,6 +147,8 @@ export interface CreateParams {
   primary_model: string
   extra_models?: string[]
   group_name?: string
+  display_group_id?: number | null
+  sort_order?: number
   enabled?: boolean
   interval_seconds: number
   jitter_seconds?: number
@@ -154,7 +160,7 @@ export interface CreateParams {
 
 // Update request: api_key 空串 = 不修改；clear_template=true 时把 template_id 置空；
 // account_id=0 显式解绑关联账号（null = 不动，见 CreateParams 注释）
-export type UpdateParams = Partial<CreateParams> & {
+export type UpdateParams = Partial<Omit<CreateParams, 'display_group_id' | 'sort_order'>> & {
   clear_template?: boolean
 }
 
@@ -345,6 +351,49 @@ export async function listHistory(
   return data
 }
 
+export interface MonitorDisplayGroup {
+  id: number
+  name: string
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface DisplayGroupParams {
+  name: string
+  sort_order?: number
+}
+
+export interface DisplayUpdateParams {
+  /** Omitted = unchanged; null = unpublished storage; positive = display group. */
+  display_group_id?: number | null
+  sort_order?: number
+}
+
+export async function listDisplayGroups(): Promise<{ items: MonitorDisplayGroup[] }> {
+  const { data } = await apiClient.get<{ items: MonitorDisplayGroup[] }>('/admin/channel-monitor-display-groups')
+  return data
+}
+
+export async function createDisplayGroup(params: DisplayGroupParams): Promise<MonitorDisplayGroup> {
+  const { data } = await apiClient.post<MonitorDisplayGroup>('/admin/channel-monitor-display-groups', params)
+  return data
+}
+
+export async function updateDisplayGroup(id: number, params: Partial<DisplayGroupParams>): Promise<MonitorDisplayGroup> {
+  const { data } = await apiClient.put<MonitorDisplayGroup>(`/admin/channel-monitor-display-groups/${id}`, params)
+  return data
+}
+
+export async function deleteDisplayGroup(id: number): Promise<void> {
+  await apiClient.delete(`/admin/channel-monitor-display-groups/${id}`)
+}
+
+export async function updateDisplay(id: number, params: DisplayUpdateParams): Promise<ChannelMonitor> {
+  const { data } = await apiClient.put<ChannelMonitor>(`/admin/channel-monitors/${id}/display`, params)
+  return data
+}
+
 export const channelMonitorAPI = {
   list,
   get,
@@ -354,6 +403,11 @@ export const channelMonitorAPI = {
   del,
   runNow,
   listHistory,
+  listDisplayGroups,
+  createDisplayGroup,
+  updateDisplayGroup,
+  deleteDisplayGroup,
+  updateDisplay,
 }
 
 export default channelMonitorAPI

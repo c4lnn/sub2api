@@ -86,6 +86,8 @@ function makeMonitor(overrides: Partial<ChannelMonitor> = {}): ChannelMonitor {
     primary_model: 'gpt-4o-mini',
     extra_models: [],
     group_name: '',
+    display_group_id: null,
+    sort_order: 0,
     enabled: true,
     interval_seconds: 60,
     jitter_seconds: 0,
@@ -109,9 +111,9 @@ function makeMonitor(overrides: Partial<ChannelMonitor> = {}): ChannelMonitor {
 
 let unmountWrapper: (() => void) | undefined
 
-function mountDialog(monitor: ChannelMonitor | null = null) {
+function mountDialog(monitor: ChannelMonitor | null = null, displayGroupId: number | null = null) {
   const wrapper = mount(MonitorFormDialog, {
-    props: { show: true, monitor },
+    props: { show: true, monitor, displayGroupId },
     global: {
       stubs: {
         BaseDialog: BaseDialogStub,
@@ -373,4 +375,30 @@ describe('MonitorFormDialog linked account selector', () => {
       account_id: null,
     }))
   })
+  it.each([null, 12])('captures the creation group %s when opened and never sends legacy labels', async (groupId) => {
+    const wrapper = mountDialog(null, groupId)
+    await flushPromises()
+    expect(wrapper.find('input[placeholder="admin.channelMonitor.form.groupNamePlaceholder"]').exists()).toBe(false)
+    await wrapper.findAll('input[type="text"]')[0].setValue('my monitor')
+    await wrapper.get('[data-testid="monitor-primary-model"]').setValue('claude-sonnet-4-5')
+    await wrapper.setProps({ displayGroupId: 99 })
+    await wrapper.get('#channel-monitor-form').trigger('submit')
+    await flushPromises()
+    expect(monitorCreate).toHaveBeenCalledWith(expect.objectContaining({ display_group_id: groupId }))
+    expect(monitorCreate.mock.calls[0][0]).not.toHaveProperty('group_name')
+    expect(monitorCreate.mock.calls[0][0]).not.toHaveProperty('sort_order')
+  })
+
+  it('omits hidden labels and stale display settings from ordinary edits, preserving blank API key semantics', async () => {
+    const wrapper = mountDialog(makeMonitor({ group_name: 'Historical label', display_group_id: 12, sort_order: 30 }))
+    await flushPromises()
+    await wrapper.get('[data-testid="monitor-primary-model"]').setValue('new-model')
+    await wrapper.setProps({ displayGroupId: 99 })
+    await wrapper.get('#channel-monitor-form').trigger('submit')
+    await flushPromises()
+    expect(monitorUpdate).toHaveBeenCalledWith(42, expect.objectContaining({ primary_model: 'new-model' }))
+    const payload = monitorUpdate.mock.calls[0][1]
+    for (const key of ['group_name', 'display_group_id', 'sort_order', 'api_key']) expect(payload).not.toHaveProperty(key)
+  })
+
 })

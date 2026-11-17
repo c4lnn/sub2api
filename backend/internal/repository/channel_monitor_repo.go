@@ -48,6 +48,8 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 		SetPrimaryModel(m.PrimaryModel).
 		SetExtraModels(emptySliceIfNil(m.ExtraModels)).
 		SetGroupName(m.GroupName).
+		SetNillableDisplayGroupID(m.DisplayGroupID).
+		SetSortOrder(m.SortOrder).
 		SetEnabled(m.Enabled).
 		SetIntervalSeconds(m.IntervalSeconds).
 		SetJitterSeconds(m.JitterSeconds).
@@ -67,7 +69,7 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 
 	created, err := builder.Save(ctx)
 	if err != nil {
-		return translatePersistenceError(err, service.ErrChannelMonitorNotFound, nil)
+		return translateMonitorDisplayWriteError(err)
 	}
 	m.ID = created.ID
 	m.CreatedAt = created.CreatedAt
@@ -147,6 +149,8 @@ func (r *channelMonitorRepository) Update(ctx context.Context, m *service.Channe
 		return translatePersistenceError(err, service.ErrChannelMonitorNotFound, nil)
 	}
 	m.UpdatedAt = updated.UpdatedAt
+	m.DisplayGroupID = updated.DisplayGroupID
+	m.SortOrder = updated.SortOrder
 	return nil
 }
 
@@ -165,6 +169,13 @@ func (r *channelMonitorRepository) List(ctx context.Context, params service.Chan
 	}
 	if params.Enabled != nil {
 		q = q.Where(channelmonitor.EnabledEQ(*params.Enabled))
+	}
+	if params.DisplayGroupID != nil {
+		if *params.DisplayGroupID == 0 {
+			q = q.Where(channelmonitor.DisplayGroupIDIsNil())
+		} else {
+			q = q.Where(channelmonitor.DisplayGroupIDEQ(*params.DisplayGroupID))
+		}
 	}
 	if s := strings.TrimSpace(params.Search); s != "" {
 		q = q.Where(channelmonitor.Or(
@@ -189,7 +200,7 @@ func (r *channelMonitorRepository) List(ctx context.Context, params service.Chan
 	}
 
 	rows, err := q.
-		Order(dbent.Desc(channelmonitor.FieldID)).
+		Order(dbent.Asc(channelmonitor.FieldSortOrder), dbent.Asc(channelmonitor.FieldID)).
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		All(ctx)
@@ -779,6 +790,8 @@ func entToServiceMonitor(row *dbent.ChannelMonitor) *service.ChannelMonitor {
 		PrimaryModel:         row.PrimaryModel,
 		ExtraModels:          extras,
 		GroupName:            row.GroupName,
+		DisplayGroupID:       row.DisplayGroupID,
+		SortOrder:            row.SortOrder,
 		Enabled:              row.Enabled,
 		IntervalSeconds:      row.IntervalSeconds,
 		JitterSeconds:        row.JitterSeconds,

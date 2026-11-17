@@ -15,6 +15,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitordisplaygroup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
@@ -27,6 +28,7 @@ type ChannelMonitorQuery struct {
 	order               []channelmonitor.OrderOption
 	inters              []Interceptor
 	predicates          []predicate.ChannelMonitor
+	withDisplayGroup    *ChannelMonitorDisplayGroupQuery
 	withHistory         *ChannelMonitorHistoryQuery
 	withDailyRollups    *ChannelMonitorDailyRollupQuery
 	withRequestTemplate *ChannelMonitorRequestTemplateQuery
@@ -65,6 +67,28 @@ func (_q *ChannelMonitorQuery) Unique(unique bool) *ChannelMonitorQuery {
 func (_q *ChannelMonitorQuery) Order(o ...channelmonitor.OrderOption) *ChannelMonitorQuery {
 	_q.order = append(_q.order, o...)
 	return _q
+}
+
+// QueryDisplayGroup chains the current query on the "display_group" edge.
+func (_q *ChannelMonitorQuery) QueryDisplayGroup() *ChannelMonitorDisplayGroupQuery {
+	query := (&ChannelMonitorDisplayGroupClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(channelmonitor.Table, channelmonitor.FieldID, selector),
+			sqlgraph.To(channelmonitordisplaygroup.Table, channelmonitordisplaygroup.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, channelmonitor.DisplayGroupTable, channelmonitor.DisplayGroupColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
 }
 
 // QueryHistory chains the current query on the "history" edge.
@@ -325,6 +349,7 @@ func (_q *ChannelMonitorQuery) Clone() *ChannelMonitorQuery {
 		order:               append([]channelmonitor.OrderOption{}, _q.order...),
 		inters:              append([]Interceptor{}, _q.inters...),
 		predicates:          append([]predicate.ChannelMonitor{}, _q.predicates...),
+		withDisplayGroup:    _q.withDisplayGroup.Clone(),
 		withHistory:         _q.withHistory.Clone(),
 		withDailyRollups:    _q.withDailyRollups.Clone(),
 		withRequestTemplate: _q.withRequestTemplate.Clone(),
@@ -332,6 +357,17 @@ func (_q *ChannelMonitorQuery) Clone() *ChannelMonitorQuery {
 		sql:  _q.sql.Clone(),
 		path: _q.path,
 	}
+}
+
+// WithDisplayGroup tells the query-builder to eager-load the nodes that are connected to
+// the "display_group" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ChannelMonitorQuery) WithDisplayGroup(opts ...func(*ChannelMonitorDisplayGroupQuery)) *ChannelMonitorQuery {
+	query := (&ChannelMonitorDisplayGroupClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withDisplayGroup = query
+	return _q
 }
 
 // WithHistory tells the query-builder to eager-load the nodes that are connected to
@@ -445,7 +481,8 @@ func (_q *ChannelMonitorQuery) sqlAll(ctx context.Context, hooks ...queryHook) (
 	var (
 		nodes       = []*ChannelMonitor{}
 		_spec       = _q.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [4]bool{
+			_q.withDisplayGroup != nil,
 			_q.withHistory != nil,
 			_q.withDailyRollups != nil,
 			_q.withRequestTemplate != nil,
@@ -472,6 +509,12 @@ func (_q *ChannelMonitorQuery) sqlAll(ctx context.Context, hooks ...queryHook) (
 	if len(nodes) == 0 {
 		return nodes, nil
 	}
+	if query := _q.withDisplayGroup; query != nil {
+		if err := _q.loadDisplayGroup(ctx, query, nodes, nil,
+			func(n *ChannelMonitor, e *ChannelMonitorDisplayGroup) { n.Edges.DisplayGroup = e }); err != nil {
+			return nil, err
+		}
+	}
 	if query := _q.withHistory; query != nil {
 		if err := _q.loadHistory(ctx, query, nodes,
 			func(n *ChannelMonitor) { n.Edges.History = []*ChannelMonitorHistory{} },
@@ -497,6 +540,38 @@ func (_q *ChannelMonitorQuery) sqlAll(ctx context.Context, hooks ...queryHook) (
 	return nodes, nil
 }
 
+func (_q *ChannelMonitorQuery) loadDisplayGroup(ctx context.Context, query *ChannelMonitorDisplayGroupQuery, nodes []*ChannelMonitor, init func(*ChannelMonitor), assign func(*ChannelMonitor, *ChannelMonitorDisplayGroup)) error {
+	ids := make([]int64, 0, len(nodes))
+	nodeids := make(map[int64][]*ChannelMonitor)
+	for i := range nodes {
+		if nodes[i].DisplayGroupID == nil {
+			continue
+		}
+		fk := *nodes[i].DisplayGroupID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(channelmonitordisplaygroup.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "display_group_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
 func (_q *ChannelMonitorQuery) loadHistory(ctx context.Context, query *ChannelMonitorHistoryQuery, nodes []*ChannelMonitor, init func(*ChannelMonitor), assign func(*ChannelMonitor, *ChannelMonitorHistory)) error {
 	fks := make([]driver.Value, 0, len(nodes))
 	nodeids := make(map[int64]*ChannelMonitor)
@@ -617,6 +692,9 @@ func (_q *ChannelMonitorQuery) querySpec() *sqlgraph.QuerySpec {
 			if fields[i] != channelmonitor.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 			}
+		}
+		if _q.withDisplayGroup != nil {
+			_spec.Node.AddColumnOnce(channelmonitor.FieldDisplayGroupID)
 		}
 		if _q.withRequestTemplate != nil {
 			_spec.Node.AddColumnOnce(channelmonitor.FieldTemplateID)

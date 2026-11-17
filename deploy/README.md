@@ -210,6 +210,40 @@ database recovery period is not treated as a permanent process failure.
 - `schema_migrations` tracks applied migrations (filename + checksum).
 - Migrations are forward-only; rollback requires a DB backup restore or a manual compensating SQL script.
 
+### V1 展示分组升级与管理
+
+V1 使用独立的 `channel_monitor_display_groups` 表；`383_channel_monitor_display_groups.sql` 只为原 `channel_monitors` 表增加可空 `display_group_id` 和默认 `0` 的 `sort_order`，以及必要约束和索引。原 ID、旧 `group_name`、凭据密文、启停、账号/模板关联、检测历史和日汇总不回填、不重建。旧标签与新组名称互不联动。
+
+**首次升级后全部旧监控进入管理端待分组，用户页可能为空。** 系统不会按旧标签自动创建正式组。管理员需在「渠道监控 → V1 主动探测」创建展示组，将监控移入正式组后才向用户发布。只有正式组中已启用的监控进入用户列表、详情和全站状态；待分组不公开，但其已启用监控仍按原功能开关、模式及周期探测，可能继续产生原有上游流量或费用。空正式组不显示在用户页。
+
+升级步骤：
+
+1. 备份完整数据库及所需加密配置，保存旧二进制/镜像与配置；在隔离副本演练增量迁移，核对旧列值、记录数、ID、历史与关联。结构锁可能影响业务，不承诺零停机。
+2. 停止旧版管理写入，避免新旧实例同时管理展示；部署新程序，由既有迁移 runner 按文件名及校验和应用迁移，不修改旧 migration 或清理迁移记录。
+3. 在待分组整理旧监控，创建正式组并明确移动发布。配置分组与卡片的数值排序后保存：合法值为 `0..2147483647`，默认 `0`，小值优先，同值按各自 ID 升序；可用 `10、20、30` 留插入空间。移动保留排序，复制继承来源归属/排序/旧标签且副本禁用，不复制历史。
+4. 核对用户列表与直接详情的可见性、全站状态、原有探测与健康检查，重启确认新归属和排序保留；本地合成数据验证不能替代生产环境验收。
+
+程序回退优先保留新增表与列，禁止默认 DROP 新结构或修改迁移记录。实际旧版本的启动兼容性必须在隔离副本验证；旧版不识别新分组、排序和待分组隐藏，**可能重新向用户显示待分组监控**，必要时在回退前暂停用户监控入口。回退期间不继续编辑新分组，重新升级不能自动合并旧标签变化。数据恢复是另一个需要明确授权的操作，会覆盖备份之后的写入，不能与程序回退混为一谈。
+
+#### 管理 API
+
+以下路径均以 `/api/v1` 为前缀，沿用管理员认证、监控功能开关及响应 envelope，不要求站点当前运行模式为 V1。待分组由 `NULL` 归属合成，不是可编辑的正式组，也不控制探测优先级或业务路由。
+
+| 方法与路径 | 语义 |
+|---|---|
+| `GET /admin/channel-monitor-display-groups` | 返回 `{items: [...]}`，正式组按 `sort_order`、ID 升序；不包含待分组实体 |
+| `POST /admin/channel-monitor-display-groups` | `{name, sort_order?}`；名称去首尾空白后非空且最多 100 字符，精确唯一、大小写敏感 |
+| `PUT /admin/channel-monitor-display-groups/:id` | 只更新提供的 `name`、`sort_order` |
+| `DELETE /admin/channel-monitor-display-groups/:id` | 仅删除实际空组；包含禁用或筛选未显示的监控也不可删，不级联删除监控及历史 |
+| `GET /admin/channel-monitors?display_group_id=...` | **查询参数**省略为全量，`0` 为待分组，正整数为正式组；保留搜索、供应商、启停及分页 |
+| `POST /admin/channel-monitors` | 可提供 `display_group_id: 正整数或null`、`sort_order`；未提供归属默认为待分组，新界面明确传入当前组 |
+| `PUT /admin/channel-monitors/:id/display` | 部分更新：省略 `display_group_id` 不改，`null` 移入待分组，正整数移入正式组；请求体的 `0` 无效。`sort_order` 省略不改，空对象无效 |
+
+例如 `PUT /admin/channel-monitors/42/display` 的 `{"display_group_id":null}` 只撤下公开展示，`{"display_group_id":3,"sort_order":20}` 明确移动并设置组内顺序。展示更新不修改凭据、旧标签、启停及业务配置，也不重新调度；普通配置更新不写展示归属或排序。新版表单隐藏旧标签，保存时不提交 `group_name`，原 API 的显式旧标签读写仍保留。
+
+输入错误为 400，未知资源为 404，重名、非空删除或并发外键冲突为 409；失败不会静默将监控移入待分组。用户直接请求待分组、禁用或不存在的监控详情均返回 404。用户页下次成功刷新会移除不可见卡片并关闭其旧详情；不承诺抹除用户已经看过的信息。
+
+
 **Verify `users.allowed_groups` → `user_allowed_groups` backfill**
 
 During the incremental GORM→Ent migration, `users.allowed_groups` (legacy `BIGINT[]`) is being replaced by a normalized join table `user_allowed_groups(user_id, group_id)`.

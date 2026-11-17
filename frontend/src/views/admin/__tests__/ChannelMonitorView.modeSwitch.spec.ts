@@ -20,7 +20,10 @@ vi.mock('@/stores/app', () => ({
   }),
 }))
 vi.mock('@/api/channelMonitorV3', () => ({ setMonitorMode: mocks.setMonitorMode }))
-vi.mock('@/api/admin', () => ({ adminAPI: { channelMonitor: { list: vi.fn().mockResolvedValue({ items: [], total: 0 }) } } }))
+vi.mock('@/api/admin', () => ({ adminAPI: { channelMonitor: {
+  list: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+  listDisplayGroups: vi.fn().mockResolvedValue({ items: [] }),
+} } }))
 vi.mock('@/features/channel-monitor-v2/MonitorSettingsPanel.vue', () => ({ default: { template: '<div data-testid="v2-panel" />' } }))
 vi.mock('@/features/channel-monitor-v3/V3SettingsPanel.vue', () => ({ default: { template: '<div data-testid="v3-panel" />' } }))
 vi.mock('vue-i18n', async () => {

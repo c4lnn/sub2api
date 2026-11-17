@@ -61,6 +61,8 @@ const showDetail = ref(false)
 const detailTarget = ref<UserMonitorView | null>(null)
 
 let abortController: AbortController | null = null
+// Promise identity also separates a removed-and-republished monitor's requests.
+const detailRequests = new Map<number, Promise<void>>()
 
 const autoRefresh = useAutoRefresh({
   storageKey: 'channel-status-auto-refresh',
@@ -94,12 +96,28 @@ async function reload(silent = false) {
   if (!silent) loading.value = true
   try {
     const res = await listChannelMonitorViews({ signal: ctrl.signal })
-    if (ctrl.signal.aborted || abortController !== ctrl) return
-    items.value = res.items || []
+    if (ctrl.signal.aborted || abortController !== ctrl) return false
+    const nextItems = res.items || []
+    const visibleIds = new Set(nextItems.map(item => item.id))
+    for (const id of Object.keys(detailCache).map(Number)) {
+      if (!visibleIds.has(id)) delete detailCache[id]
+    }
+    for (const id of detailRequests.keys()) {
+      if (!visibleIds.has(id)) detailRequests.delete(id)
+    }
+    if (detailTarget.value) {
+      const target = nextItems.find(item => item.id === detailTarget.value?.id)
+      if (target) detailTarget.value = target
+      else closeDetail()
+    }
+    items.value = nextItems
+    return true
   } catch (err: unknown) {
     const e = err as { name?: string; code?: string }
-    if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
+    if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return false
+    if (abortController !== ctrl) return false
     appStore.showError(extractApiErrorMessage(err, t('channelStatus.loadError')))
+    return false
   } finally {
     if (abortController === ctrl) {
       if (!silent) loading.value = false
@@ -110,7 +128,7 @@ async function reload(silent = false) {
 }
 
 async function refresh(silent = false) {
-  await reload(silent)
+  if (!await reload(silent)) return
   // After base reload, refresh any cached detail records so non-7d availability
   // values stay in sync without forcing the user to switch tabs again.
   if (currentWindow.value !== '7d') {
@@ -119,12 +137,22 @@ async function refresh(silent = false) {
 }
 
 async function loadDetail(id: number, force = false) {
+  if (!items.value.some(item => item.id === id)) return
   if (!force && detailCache[id]) return
-  try {
-    detailCache[id] = await fetchChannelMonitorDetail(id)
-  } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('channelStatus.detailLoadError')))
-  }
+  if (!force && detailRequests.has(id)) return detailRequests.get(id)
+  const request: Promise<void> = fetchChannelMonitorDetail(id)
+    .then(detail => {
+      if (detailRequests.get(id) === request) detailCache[id] = detail
+    })
+    .catch((err: unknown) => {
+      if (detailRequests.get(id) !== request) return
+      appStore.showError(extractApiErrorMessage(err, t('channelStatus.detailLoadError')))
+    })
+    .finally(() => {
+      if (detailRequests.get(id) === request) detailRequests.delete(id)
+    })
+  detailRequests.set(id, request)
+  return request
 }
 
 async function ensureDetailsForWindow() {
@@ -139,7 +167,9 @@ async function handleWindowChange(value: MonitorWindow) {
 }
 
 function openDetail(row: UserMonitorView) {
-  detailTarget.value = row
+  const target = items.value.find(item => item.id === row.id)
+  if (!target) return
+  detailTarget.value = target
   showDetail.value = true
 }
 
@@ -147,10 +177,6 @@ function closeDetail() {
   showDetail.value = false
   detailTarget.value = null
 }
-
-watch(items, () => {
-  void ensureDetailsForWindow()
-})
 
 watch(
   () => appStore.cachedPublicSettings?.channel_monitor_enabled,
@@ -161,7 +187,7 @@ watch(
 )
 
 onMounted(() => {
-  void reload(false)
+  void refresh(false)
   if (appStore.cachedPublicSettings?.channel_monitor_enabled !== false) {
     autoRefresh.setEnabled(autoRefresh.enabled.value)
   }
@@ -169,5 +195,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (abortController) abortController.abort()
+  detailRequests.clear()
 })
 </script>

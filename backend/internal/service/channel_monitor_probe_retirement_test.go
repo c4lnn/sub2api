@@ -61,3 +61,19 @@ func TestChannelMonitorRuntimeActiveProbesAllowed(t *testing.T) {
 	require.False(t, (ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeV2}).ActiveProbesAllowed())
 	require.True(t, (ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeV2}).PassiveAggregationAllowed())
 }
+
+func TestChannelMonitorUnpublishedQuotaStillChecksInV1(t *testing.T) {
+	repo := &quotaModeRepoStub{monitor: &ChannelMonitor{
+		ID: 71, Provider: MonitorProviderDeepseek, PrimaryModel: "quota",
+		CheckMode: MonitorCheckModeQuota, Enabled: true, DisplayGroupID: nil,
+		IntervalSeconds: 60,
+	}}
+	svc := newQuotaModeService(repo)
+	results, err := svc.RunCheck(context.Background(), 71)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.NotNil(t, results[0].Quota)
+	require.Len(t, repo.history, 1)
+	require.Equal(t, []int64{71}, repo.markedIDs)
+	require.Nil(t, repo.monitor.DisplayGroupID)
+}

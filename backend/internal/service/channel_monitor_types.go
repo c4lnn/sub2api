@@ -32,22 +32,26 @@ const (
 
 // ChannelMonitor 渠道监控配置（service 层模型，不直接暴露 ent 类型）。
 type ChannelMonitor struct {
-	ID              int64
-	Name            string
-	Provider        string
-	APIMode         string
-	Endpoint        string
-	APIKey          string // 解密后的明文 API Key（仅在 service 内部使用，handler 层不应直接序列化返回）
-	PrimaryModel    string
-	ExtraModels     []string
-	GroupName       string
-	Enabled         bool
-	IntervalSeconds int
-	JitterSeconds   int // 每次调度 ± [0, jitter] 的随机偏移（秒），0 = 固定间隔
-	LastCheckedAt   *time.Time
-	CreatedBy       int64
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                    int64
+	Name                  string
+	Provider              string
+	APIMode               string
+	Endpoint              string
+	APIKey                string // 解密后的明文 API Key（仅在 service 内部使用，handler 层不应直接序列化返回）
+	PrimaryModel          string
+	ExtraModels           []string
+	GroupName             string
+	DisplayGroupID        *int64
+	DisplayGroupName      string
+	DisplayGroupSortOrder int
+	SortOrder             int
+	Enabled               bool
+	IntervalSeconds       int
+	JitterSeconds         int // 每次调度 ± [0, jitter] 的随机偏移（秒），0 = 固定间隔
+	LastCheckedAt         *time.Time
+	CreatedBy             int64
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 
 	// 配额模式（check_mode = quota / quota_probe）：
 	// 关联已有账号复用账号侧用量服务，Endpoint/APIKey 可为空（quota 模式）。
@@ -73,11 +77,12 @@ type ChannelMonitor struct {
 
 // ChannelMonitorListParams 列表查询过滤参数。
 type ChannelMonitorListParams struct {
-	Page     int
-	PageSize int
-	Provider string
-	Enabled  *bool
-	Search   string
+	Page           int
+	PageSize       int
+	Provider       string
+	Enabled        *bool
+	Search         string
+	DisplayGroupID *int64 // nil = all; 0 = unpublished; positive = formal group
 }
 
 // ChannelMonitorCreateParams 创建参数。
@@ -90,6 +95,8 @@ type ChannelMonitorCreateParams struct {
 	PrimaryModel     string
 	ExtraModels      []string
 	GroupName        string
+	DisplayGroupID   *int64
+	SortOrder        int
 	Enabled          bool
 	IntervalSeconds  int
 	JitterSeconds    int
@@ -146,17 +153,21 @@ type CheckResult struct {
 
 // UserMonitorView 用户只读视图：监控概览（含主模型最近状态 + 7d 可用率 + 附加模型最近状态）。
 type UserMonitorView struct {
-	ID                   int64
-	Name                 string
-	Provider             string
-	GroupName            string
-	PrimaryModel         string
-	PrimaryStatus        string
-	PrimaryLatencyMs     *int
-	PrimaryPingLatencyMs *int    // 主模型最近一次 ping 延迟
-	Availability7d       float64 // 0-100
-	ExtraModels          []ExtraModelStatus
-	Timeline             []UserMonitorTimelinePoint // 主模型最近 N 个历史点（按 checked_at DESC，最新在前）
+	ID                    int64
+	Name                  string
+	Provider              string
+	GroupName             string
+	DisplayGroupID        int64
+	DisplayGroupName      string
+	DisplayGroupSortOrder int
+	SortOrder             int
+	PrimaryModel          string
+	PrimaryStatus         string
+	PrimaryLatencyMs      *int
+	PrimaryPingLatencyMs  *int    // 主模型最近一次 ping 延迟
+	Availability7d        float64 // 0-100
+	ExtraModels           []ExtraModelStatus
+	Timeline              []UserMonitorTimelinePoint // 主模型最近 N 个历史点（按 checked_at DESC，最新在前）
 	// LatestQuota 主模型最近一次配额快照；channel_monitor_show_quota=false
 	// 时由 handler 服务端剥离。
 	LatestQuota *domain.MonitorQuotaSnapshot
@@ -179,11 +190,15 @@ type ExtraModelStatus struct {
 
 // UserMonitorDetail 用户只读视图：监控详情（含全部模型 7d/15d/30d 可用率与平均延迟）。
 type UserMonitorDetail struct {
-	ID        int64
-	Name      string
-	Provider  string
-	GroupName string
-	Models    []ModelDetail
+	ID                    int64
+	Name                  string
+	Provider              string
+	GroupName             string
+	DisplayGroupID        int64
+	DisplayGroupName      string
+	DisplayGroupSortOrder int
+	SortOrder             int
+	Models                []ModelDetail
 }
 
 // ModelDetail 单个模型的可用率/延迟统计。

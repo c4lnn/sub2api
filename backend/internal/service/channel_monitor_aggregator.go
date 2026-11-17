@@ -48,7 +48,7 @@ func (s *ChannelMonitorService) BatchMonitorStatusSummary(
 	return out
 }
 
-// ListUserView 用户只读视图：列出所有 enabled 监控的概览。
+// ListUserView lists enabled monitors assigned to a formal display group.
 // 使用批量聚合接口避免 N+1：
 //
 //	1 次查 monitors；
@@ -56,9 +56,9 @@ func (s *ChannelMonitorService) BatchMonitorStatusSummary(
 //	1 次批量 7d availability；
 //	1 次批量 timeline（主模型最近 N 条）。
 func (s *ChannelMonitorService) ListUserView(ctx context.Context) ([]*UserMonitorView, error) {
-	monitors, err := s.repo.ListEnabled(ctx)
+	monitors, err := s.repo.ListPublished(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list enabled monitors: %w", err)
+		return nil, fmt.Errorf("list published monitors: %w", err)
 	}
 	if len(monitors) == 0 {
 		return []*UserMonitorView{}, nil
@@ -130,12 +130,9 @@ func pickLatest(rows []*ChannelMonitorLatest, model string) *ChannelMonitorLates
 // GetUserDetail 用户只读视图：单个监控详情（每个模型 7d/15d/30d 可用率与平均延迟）。
 // 不暴露 api_key。
 func (s *ChannelMonitorService) GetUserDetail(ctx context.Context, id int64) (*UserMonitorDetail, error) {
-	m, err := s.repo.GetByID(ctx, id)
+	m, err := s.repo.GetPublishedByID(ctx, id)
 	if err != nil {
 		return nil, err
-	}
-	if !m.Enabled {
-		return nil, ErrChannelMonitorNotFound
 	}
 
 	latest, err := s.repo.ListLatestPerModel(ctx, id)
@@ -149,11 +146,15 @@ func (s *ChannelMonitorService) GetUserDetail(ctx context.Context, id int64) (*U
 
 	models := mergeModelDetails(m, latest, availMap)
 	return &UserMonitorDetail{
-		ID:        m.ID,
-		Name:      m.Name,
-		Provider:  m.Provider,
-		GroupName: m.GroupName,
-		Models:    models,
+		ID:                    m.ID,
+		Name:                  m.Name,
+		Provider:              m.Provider,
+		GroupName:             m.GroupName,
+		DisplayGroupID:        *m.DisplayGroupID,
+		DisplayGroupName:      m.DisplayGroupName,
+		DisplayGroupSortOrder: m.DisplayGroupSortOrder,
+		SortOrder:             m.SortOrder,
+		Models:                models,
 	}, nil
 }
 
@@ -231,16 +232,20 @@ func buildUserViewFromSummary(
 	timelineEntries []*ChannelMonitorHistoryEntry,
 ) *UserMonitorView {
 	view := &UserMonitorView{
-		ID:               m.ID,
-		Name:             m.Name,
-		Provider:         m.Provider,
-		GroupName:        m.GroupName,
-		PrimaryModel:     m.PrimaryModel,
-		PrimaryStatus:    summary.PrimaryStatus,
-		PrimaryLatencyMs: summary.PrimaryLatencyMs,
-		Availability7d:   summary.Availability7d,
-		ExtraModels:      summary.ExtraModels,
-		Timeline:         buildTimelinePoints(timelineEntries),
+		ID:                    m.ID,
+		Name:                  m.Name,
+		Provider:              m.Provider,
+		GroupName:             m.GroupName,
+		DisplayGroupID:        *m.DisplayGroupID,
+		DisplayGroupName:      m.DisplayGroupName,
+		DisplayGroupSortOrder: m.DisplayGroupSortOrder,
+		SortOrder:             m.SortOrder,
+		PrimaryModel:          m.PrimaryModel,
+		PrimaryStatus:         summary.PrimaryStatus,
+		PrimaryLatencyMs:      summary.PrimaryLatencyMs,
+		Availability7d:        summary.Availability7d,
+		ExtraModels:           summary.ExtraModels,
+		Timeline:              buildTimelinePoints(timelineEntries),
 	}
 	if primaryLatest != nil {
 		view.PrimaryPingLatencyMs = primaryLatest.PingLatencyMs

@@ -47,6 +47,8 @@ type channelMonitorCreateRequest struct {
 	PrimaryModel     string            `json:"primary_model" binding:"max=200"`
 	ExtraModels      []string          `json:"extra_models"`
 	GroupName        string            `json:"group_name" binding:"max=100"`
+	DisplayGroupID   *int64            `json:"display_group_id"`
+	SortOrder        monitorSortOrder  `json:"sort_order"`
 	Enabled          *bool             `json:"enabled"`
 	IntervalSeconds  int               `json:"interval_seconds" binding:"required,min=15,max=3600"`
 	JitterSeconds    int               `json:"jitter_seconds" binding:"omitempty,min=0,max=3585"`
@@ -96,6 +98,8 @@ type channelMonitorResponse struct {
 	PrimaryModel        string                               `json:"primary_model"`
 	ExtraModels         []string                             `json:"extra_models"`
 	GroupName           string                               `json:"group_name"`
+	DisplayGroupID      *int64                               `json:"display_group_id"`
+	SortOrder           int                                  `json:"sort_order"`
 	Enabled             bool                                 `json:"enabled"`
 	IntervalSeconds     int                                  `json:"interval_seconds"`
 	JitterSeconds       int                                  `json:"jitter_seconds"`
@@ -172,6 +176,8 @@ func channelMonitorToResponse(m *service.ChannelMonitor) *channelMonitorResponse
 		PrimaryModel:        m.PrimaryModel,
 		ExtraModels:         extras,
 		GroupName:           m.GroupName,
+		DisplayGroupID:      m.DisplayGroupID,
+		SortOrder:           m.SortOrder,
 		Enabled:             m.Enabled,
 		IntervalSeconds:     m.IntervalSeconds,
 		JitterSeconds:       m.JitterSeconds,
@@ -260,6 +266,14 @@ func (h *ChannelMonitorHandler) List(c *gin.Context) {
 		Enabled:  parseListEnabled(c.Query("enabled")),
 		Search:   strings.TrimSpace(c.Query("search")),
 	}
+	if values, exists := c.Request.URL.Query()["display_group_id"]; exists {
+		id, err := strconv.ParseInt(values[0], 10, 64)
+		if err != nil || id < 0 {
+			response.ErrorFrom(c, service.ErrMonitorDisplayGroupID)
+			return
+		}
+		params.DisplayGroupID = &id
+	}
 
 	items, total, err := h.monitorService.List(c.Request.Context(), params)
 	if err != nil {
@@ -344,6 +358,8 @@ func (h *ChannelMonitorHandler) Create(c *gin.Context) {
 		PrimaryModel:     req.PrimaryModel,
 		ExtraModels:      req.ExtraModels,
 		GroupName:        req.GroupName,
+		DisplayGroupID:   req.DisplayGroupID,
+		SortOrder:        int(req.SortOrder),
 		Enabled:          enabled,
 		IntervalSeconds:  req.IntervalSeconds,
 		JitterSeconds:    req.JitterSeconds,

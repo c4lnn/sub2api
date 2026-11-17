@@ -1,5 +1,5 @@
 <template>
-  <div class="flex items-center gap-1">
+  <div class="flex flex-wrap items-center gap-1">
     <button
       @click="$emit('run', row)"
       :disabled="running"
@@ -21,11 +21,20 @@
       </span>
     </button>
     <button
+      data-testid="monitor-edit"
       @click="$emit('edit', row)"
       class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
     >
       <Icon name="edit" size="sm" />
       <span class="text-xs">{{ t('common.edit') }}</span>
+    </button>
+    <button
+      type="button"
+      data-testid="monitor-move"
+      @click="$emit('move', row)"
+      class="flex min-h-11 flex-col items-center justify-center rounded-lg px-2 text-gray-500 hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700"
+    >
+      <span class="text-xs">{{ t('admin.channelMonitor.displayGroups.move') }}</span>
     </button>
     <button
       @click="$emit('delete', row)"
@@ -54,6 +63,7 @@ defineEmits<{
   (e: 'duplicate', row: ChannelMonitor): void
   (e: 'edit', row: ChannelMonitor): void
   (e: 'delete', row: ChannelMonitor): void
+  (e: 'move', row: ChannelMonitor): void
 }>()
 
 const { t } = useI18n()

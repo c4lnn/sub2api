@@ -19,6 +19,8 @@ function makeMonitor(overrides: Partial<ChannelMonitor> = {}): ChannelMonitor {
     primary_model: 'gpt-4o-mini',
     extra_models: [],
     group_name: '',
+    display_group_id: null,
+    sort_order: 0,
     enabled: true,
     interval_seconds: 60,
     jitter_seconds: 0,
@@ -75,5 +77,13 @@ describe('MonitorActionsCell duplicate action', () => {
 
     expect(button.attributes('disabled')).toBeDefined()
     expect(button.attributes('title')).toBe('admin.channelMonitor.duplicateKeyUnavailable')
+  })
+  it('opens movement for the selected monitor without changing it', async () => {
+    const row = makeMonitor({ display_group_id: 12, sort_order: 30 })
+    const wrapper = mount(MonitorActionsCell, { props: { row, running: false, duplicating: false } })
+    await wrapper.get('[data-testid="monitor-move"]').trigger('click')
+    expect(wrapper.emitted('move')).toEqual([[row]])
+    expect(row.display_group_id).toBe(12)
+    expect(row.sort_order).toBe(30)
   })
 })

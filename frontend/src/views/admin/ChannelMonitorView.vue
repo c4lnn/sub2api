@@ -80,7 +80,22 @@
       <V3SettingsPanel v-if="adminMonitorTab === 'v3'" />
       <MonitorSettingsPanel v-else-if="adminMonitorTab === 'v2'" />
 
-      <TablePageLayout v-else>
+      <div v-else class="grid min-w-0 items-start gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <MonitorDisplayGroups
+          :groups="displayGroups"
+          :selected-id="selectedGroupId"
+          :loading="groupsLoading"
+          @select="selectGroup"
+          @create="openGroupDialog()"
+          @edit="openGroupDialog"
+          @delete="deletingGroup = $event"
+        />
+        <div class="min-w-0 space-y-4">
+          <div class="min-w-0 rounded-2xl bg-white p-4 dark:bg-dark-800">
+            <h2 class="break-all text-lg font-semibold" data-testid="current-display-group">{{ currentGroupName }}</h2>
+            <p v-if="selectedGroupId === null" class="mt-2 text-sm text-gray-500">{{ t('admin.channelMonitor.displayGroups.storageHint') }}</p>
+          </div>
+          <TablePageLayout>
       <template #filters>
         <MonitorFiltersBar
           v-model:search="searchQuery"
@@ -131,6 +146,10 @@
             <Toggle :modelValue="row.enabled" @update:modelValue="toggleEnabled(row)" />
           </template>
 
+          <template #cell-sort_order="{ row }">
+            <MonitorDisplayOrderCell :row="row" :saving="savingDisplayIds.has(row.id)" @save="saveMonitorOrder" />
+          </template>
+
           <template #cell-actions="{ row }">
             <MonitorActionsCell
               :row="row"
@@ -140,14 +159,15 @@
               @duplicate="handleDuplicate"
               @edit="openEditDialog"
               @delete="handleDelete"
+              @move="openMoveDialog"
             />
           </template>
 
           <template #empty>
             <EmptyState
-              :title="t('admin.channelMonitor.noMonitorsYet')"
-              :description="t('admin.channelMonitor.createFirstMonitor')"
-              :action-text="t('admin.channelMonitor.createButton')"
+              :title="t(hasFilters ? 'admin.channelMonitor.displayGroups.noMatches' : 'admin.channelMonitor.displayGroups.emptyGroup')"
+              :description="t(hasFilters ? 'admin.channelMonitor.displayGroups.noMatchesHint' : 'admin.channelMonitor.createFirstMonitor')"
+              :action-text="hasFilters ? undefined : t('admin.channelMonitor.createButton')"
               @action="openCreateDialog"
             />
           </template>
@@ -164,12 +184,15 @@
           @update:pageSize="onPageSizeChange"
         />
       </template>
-      </TablePageLayout>
+          </TablePageLayout>
+        </div>
+      </div>
     </div>
 
     <MonitorFormDialog
       :show="showDialog"
       :monitor="editing"
+      :display-group-id="createGroupContext"
       @close="closeDialog"
       @saved="reload"
     />
@@ -184,6 +207,46 @@
       :show="showRunResult"
       :results="runResults"
       @close="showRunResult = false"
+    />
+
+    <BaseDialog :show="showGroupDialog" :title="t(editingGroup ? 'admin.channelMonitor.displayGroups.edit' : 'admin.channelMonitor.displayGroups.create')" @close="closeGroupDialog">
+      <form id="display-group-form" class="space-y-4" @submit.prevent="saveGroup">
+        <label class="block input-label" for="display-group-name">{{ t('admin.channelMonitor.displayGroups.name') }}</label>
+        <input id="display-group-name" v-model="groupForm.name" class="input" required :disabled="groupSaving" />
+        <label class="block input-label" for="display-group-order">{{ t('admin.channelMonitor.displayGroups.order') }}</label>
+        <input id="display-group-order" v-model="groupForm.sort_order" class="input" type="number" min="0" max="2147483647" step="1" required :disabled="groupSaving" />
+        <p class="text-sm text-gray-500">{{ t('admin.channelMonitor.displayGroups.orderHint') }}</p>
+      </form>
+      <template #footer>
+        <button class="btn btn-secondary" type="button" :disabled="groupSaving" @click="closeGroupDialog">{{ t('common.cancel') }}</button>
+        <button class="btn btn-primary" form="display-group-form" type="submit" :disabled="groupSaving">{{ t('common.save') }}</button>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog :show="movingMonitor !== null" :title="t('admin.channelMonitor.displayGroups.move')" @close="closeMoveDialog">
+      <form id="move-monitor-form" class="space-y-4" @submit.prevent="moveMonitor">
+        <p class="break-all">{{ movingMonitor?.name }}</p>
+        <label class="block input-label" for="monitor-move-target">{{ t('admin.channelMonitor.displayGroups.target') }}</label>
+        <select id="monitor-move-target" v-model="moveTarget" class="input w-full" :disabled="moveSaving">
+          <option v-for="group in displayGroups" :key="group.id" :value="group.id">{{ group.name }}</option>
+          <option :value="null">{{ t('admin.channelMonitor.displayGroups.storage') }}</option>
+        </select>
+      </form>
+      <template #footer>
+        <button type="button" class="btn btn-secondary" :disabled="moveSaving" @click="closeMoveDialog">{{ t('common.cancel') }}</button>
+        <button type="submit" class="btn btn-primary" form="move-monitor-form" :disabled="moveSaving || moveTarget === movingMonitor?.display_group_id">{{ t('common.save') }}</button>
+      </template>
+    </BaseDialog>
+
+    <ConfirmDialog
+      :show="deletingGroup !== null"
+      :title="t('admin.channelMonitor.displayGroups.delete')"
+      :message="t('admin.channelMonitor.displayGroups.deleteConfirm', { name: deletingGroup?.name ?? '' })"
+      :confirm-text="t('common.delete')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="deleteGroup"
+      @cancel="deletingGroup = null"
     />
 
     <ConfirmDialog
@@ -220,6 +283,7 @@ import type {
   CheckResult,
   ListParams,
   Provider,
+  MonitorDisplayGroup,
 } from '@/api/admin/channelMonitor'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -227,6 +291,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -237,6 +302,8 @@ import MonitorTemplateManagerDialog from '@/components/admin/monitor/MonitorTemp
 import MonitorRunResultDialog from '@/components/admin/monitor/MonitorRunResultDialog.vue'
 import MonitorPrimaryModelCell from '@/components/admin/monitor/MonitorPrimaryModelCell.vue'
 import MonitorActionsCell from '@/components/admin/monitor/MonitorActionsCell.vue'
+import MonitorDisplayGroups from '@/components/admin/monitor/MonitorDisplayGroups.vue'
+import MonitorDisplayOrderCell from '@/components/admin/monitor/MonitorDisplayOrderCell.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 import MonitorSettingsPanel from '@/features/channel-monitor-v2/MonitorSettingsPanel.vue'
@@ -287,6 +354,24 @@ const searchQuery = ref('')
 const providerFilter = ref<Provider | ''>('')
 const enabledFilter = ref<'' | 'true' | 'false'>('')
 const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
+const displayGroups = ref<MonitorDisplayGroup[]>([])
+const groupsLoading = ref(false)
+const selectedGroupId = ref<number | null>(null)
+const currentGroupName = computed(() => selectedGroupId.value === null
+  ? t('admin.channelMonitor.displayGroups.storage')
+  : displayGroups.value.find(group => group.id === selectedGroupId.value)?.name ?? '')
+const hasFilters = computed(() => Boolean(searchQuery.value.trim() || providerFilter.value || enabledFilter.value))
+const createGroupContext = ref<number | null>(null)
+const showGroupDialog = ref(false)
+const editingGroup = ref<MonitorDisplayGroup | null>(null)
+const groupForm = reactive<{ name: string; sort_order: number | string }>({ name: '', sort_order: 0 })
+const groupSaving = ref(false)
+const deletingGroup = ref<MonitorDisplayGroup | null>(null)
+const groupDeleting = ref(false)
+const movingMonitor = ref<ChannelMonitor | null>(null)
+const moveTarget = ref<number | null>(null)
+const moveSaving = ref(false)
+const savingDisplayIds = reactive(new Set<number>())
 
 const showDialog = ref(false)
 const showTemplateManager = ref(false)
@@ -299,6 +384,7 @@ const duplicatingIds = reactive(new Set<number>())
 
 let abortController: AbortController | null = null
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
+let groupsRequest = 0
 
 const columns = computed<Column[]>(() => [
   { key: 'name', label: t('admin.channelMonitor.columns.name'), sortable: false },
@@ -307,6 +393,7 @@ const columns = computed<Column[]>(() => [
   { key: 'availability_7d', label: t('admin.channelMonitor.columns.availability7d'), sortable: false },
   { key: 'latency', label: t('admin.channelMonitor.columns.latency'), sortable: false },
   { key: 'enabled', label: t('admin.channelMonitor.columns.enabled'), sortable: false },
+  { key: 'sort_order', label: t('admin.channelMonitor.displayGroups.order'), sortable: false },
   { key: 'actions', label: t('admin.channelMonitor.columns.actions'), sortable: false },
 ])
 
@@ -324,6 +411,7 @@ async function reload() {
     const params: ListParams = {
       page: pagination.page,
       page_size: pagination.page_size,
+      display_group_id: selectedGroupId.value ?? 0,
     }
     if (providerFilter.value) params.provider = providerFilter.value
     if (enabledFilter.value === 'true') params.enabled = true
@@ -332,9 +420,16 @@ async function reload() {
 
     const res = await adminAPI.channelMonitor.list(params, { signal: ctrl.signal })
     if (ctrl.signal.aborted || abortController !== ctrl) return
+    const lastPage = Math.max(1, Math.ceil(res.total / pagination.page_size))
+    if (pagination.page > lastPage) {
+      pagination.page = lastPage
+      await reload()
+      return
+    }
     monitors.value = res.items || []
     pagination.total = res.total
   } catch (err: unknown) {
+    if (ctrl.signal.aborted || abortController !== ctrl) return
     const e = err as { name?: string; code?: string }
     if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
     appStore.showError(extractApiErrorMessage(err, t('admin.channelMonitor.loadError')))
@@ -366,6 +461,7 @@ function onPageSizeChange(size: number) {
 }
 
 function openCreateDialog() {
+  createGroupContext.value = selectedGroupId.value
   editing.value = null
   showDialog.value = true
 }
@@ -448,14 +544,149 @@ async function confirmDelete() {
   }
 }
 
+async function loadGroups() {
+  const request = ++groupsRequest
+  groupsLoading.value = true
+  try {
+    const response = await adminAPI.channelMonitor.listDisplayGroups()
+    if (request !== groupsRequest) return
+    displayGroups.value = response.items.slice().sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
+  } catch (err: unknown) {
+    if (request !== groupsRequest) return
+    appStore.showError(extractApiErrorMessage(err, t('admin.channelMonitor.displayGroups.loadError')))
+  } finally {
+    if (request === groupsRequest) groupsLoading.value = false
+  }
+}
+
+function selectGroup(id: number | null) {
+  if (selectedGroupId.value === id) return
+  if (searchTimeout) clearTimeout(searchTimeout)
+  selectedGroupId.value = id
+  pagination.page = 1
+  monitors.value = []
+  pagination.total = 0
+  void reload()
+}
+
+function openGroupDialog(group?: MonitorDisplayGroup) {
+  editingGroup.value = group ?? null
+  groupForm.name = group?.name ?? ''
+  groupForm.sort_order = group?.sort_order ?? 0
+  showGroupDialog.value = true
+}
+
+function closeGroupDialog() {
+  if (!groupSaving.value) showGroupDialog.value = false
+}
+
+function validOrder(value: number | string) {
+  return value !== '' && Number.isInteger(Number(value)) && Number(value) >= 0 && Number(value) <= 2147483647
+}
+
+async function saveGroup() {
+  if (groupSaving.value) return
+  const name = groupForm.name.trim()
+  if (!name || Array.from(name).length > 100 || !validOrder(groupForm.sort_order)) {
+    appStore.showError(t('admin.channelMonitor.displayGroups.invalidInput'))
+    return
+  }
+  const target = editingGroup.value
+  groupSaving.value = true
+  try {
+    const payload = { name, sort_order: Number(groupForm.sort_order) }
+    const saved = target
+      ? await adminAPI.channelMonitor.updateDisplayGroup(target.id, payload)
+      : await adminAPI.channelMonitor.createDisplayGroup(payload)
+    groupsRequest++
+    groupsLoading.value = false
+    displayGroups.value = [...displayGroups.value.filter(group => group.id !== saved.id), saved]
+      .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
+    showGroupDialog.value = false
+    if (!target) selectGroup(saved.id)
+    appStore.showSuccess(t('admin.channelMonitor.displayGroups.saved'))
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    groupSaving.value = false
+  }
+}
+
+async function deleteGroup() {
+  const target = deletingGroup.value
+  if (!target || groupDeleting.value) return
+  groupDeleting.value = true
+  try {
+    await adminAPI.channelMonitor.deleteDisplayGroup(target.id)
+    groupsRequest++
+    groupsLoading.value = false
+    displayGroups.value = displayGroups.value.filter(group => group.id !== target.id)
+    deletingGroup.value = null
+    if (selectedGroupId.value === null) { pagination.page = 1; await reload() }
+    else selectGroup(null)
+    appStore.showSuccess(t('admin.channelMonitor.displayGroups.deleted'))
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    groupDeleting.value = false
+  }
+}
+
+function openMoveDialog(row: ChannelMonitor) {
+  movingMonitor.value = row
+  moveTarget.value = row.display_group_id
+}
+
+function closeMoveDialog() {
+  if (!moveSaving.value) movingMonitor.value = null
+}
+
+async function moveMonitor() {
+  const target = movingMonitor.value
+  if (!target || moveSaving.value) return
+  const destination = moveTarget.value
+  moveSaving.value = true
+  try {
+    await adminAPI.channelMonitor.updateDisplay(target.id, { display_group_id: destination })
+    movingMonitor.value = null
+    appStore.showSuccess(t('admin.channelMonitor.displayGroups.moved'))
+    await reload()
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    moveSaving.value = false
+  }
+}
+
+async function saveMonitorOrder(row: ChannelMonitor, order: number) {
+  if (savingDisplayIds.has(row.id) || !validOrder(order)) return
+  savingDisplayIds.add(row.id)
+  try {
+    const saved = await adminAPI.channelMonitor.updateDisplay(row.id, { sort_order: order })
+    row.sort_order = saved.sort_order
+    appStore.showSuccess(t('admin.channelMonitor.displayGroups.saved'))
+    await reload()
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    savingDisplayIds.delete(row.id)
+  }
+}
+
+watch([providerFilter, enabledFilter], () => {
+  pagination.page = 1
+  void reload()
+})
+
 watch(adminMonitorTab, (tab) => {
-  if (tab === 'legacy' && monitors.value.length === 0) void reload()
+  if (tab === 'legacy') { void loadGroups(); void reload() }
 })
 onMounted(() => {
-  if (adminMonitorTab.value === 'legacy') void reload()
+  if (adminMonitorTab.value === 'legacy') { void loadGroups(); void reload() }
 })
 onUnmounted(() => {
   if (searchTimeout) clearTimeout(searchTimeout)
+  groupsRequest++
   abortController?.abort()
 })
 </script>

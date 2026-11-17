@@ -19,7 +19,9 @@ type ChannelMonitor struct {
 
 func (ChannelMonitor) Annotations() []schema.Annotation {
 	return []schema.Annotation{
-		entsql.Annotation{Table: "channel_monitors"},
+		entsql.Annotation{Table: "channel_monitors", Checks: map[string]string{
+			"channel_monitors_sort_order_check": "sort_order >= 0",
+		}},
 	}
 }
 
@@ -75,6 +77,12 @@ func (ChannelMonitor) Fields() []ent.Field {
 			Optional().
 			Default("").
 			MaxLen(100),
+		field.Int64("display_group_id").
+			Optional().
+			Nillable(),
+		field.Int("sort_order").
+			Default(0).
+			Range(0, 2147483647),
 		field.Bool("enabled").
 			Default(true),
 		field.Int("interval_seconds").
@@ -112,6 +120,10 @@ func (ChannelMonitor) Fields() []ent.Field {
 
 func (ChannelMonitor) Edges() []ent.Edge {
 	return []ent.Edge{
+		edge.To("display_group", ChannelMonitorDisplayGroup.Type).
+			Field("display_group_id").
+			Unique().
+			Annotations(entsql.OnDelete(entsql.Restrict)),
 		edge.To("history", ChannelMonitorHistory.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 		edge.To("daily_rollups", ChannelMonitorDailyRollup.Type).
@@ -133,5 +145,6 @@ func (ChannelMonitor) Indexes() []ent.Index {
 		index.Fields("group_name"),
 		index.Fields("template_id"),
 		index.Fields("account_id"),
+		index.Fields("display_group_id", "sort_order", "id"),
 	}
 }

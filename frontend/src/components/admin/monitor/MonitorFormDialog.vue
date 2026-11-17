@@ -148,10 +148,6 @@
         />
       </div>
 
-      <div>
-        <label class="input-label">{{ t('admin.channelMonitor.form.groupName') }}</label>
-        <input v-model="form.group_name" type="text" class="input" :placeholder="t('admin.channelMonitor.form.groupNamePlaceholder')" />
-      </div>
 
       <div>
         <label class="input-label">{{ t('admin.channelMonitor.form.intervalSeconds') }} <span class="text-red-500">*</span></label>
@@ -289,6 +285,7 @@ import {
 const props = defineProps<{
   show: boolean
   monitor: ChannelMonitor | null
+  displayGroupId?: number | null
 }>()
 
 const emit = defineEmits<{
@@ -311,6 +308,7 @@ const systemDefaultInterval = computed<number>(() => {
 const editing = computed<ChannelMonitor | null>(() => props.monitor)
 
 const submitting = ref(false)
+const createDisplayGroupId = ref<number | null>(null)
 
 // API key picker
 const showKeyPicker = ref(false)
@@ -328,7 +326,6 @@ interface MonitorForm {
   api_key: string
   primary_model: string
   extra_models: string[]
-  group_name: string
   interval_seconds: number
   jitter_seconds: number
   enabled: boolean
@@ -349,7 +346,6 @@ const form = reactive<MonitorForm>({
   api_key: '',
   primary_model: '',
   extra_models: [],
-  group_name: '',
   interval_seconds: systemDefaultInterval.value,
   jitter_seconds: 0,
   enabled: true,
@@ -736,7 +732,6 @@ function resetForm() {
   form.api_key = ''
   form.primary_model = ''
   form.extra_models = []
-  form.group_name = ''
   form.interval_seconds = systemDefaultInterval.value
   form.jitter_seconds = 0
   form.enabled = true
@@ -758,7 +753,6 @@ function loadFromMonitor(m: ChannelMonitor) {
   form.api_key = ''
   form.primary_model = m.primary_model
   form.extra_models = [...(m.extra_models || [])]
-  form.group_name = m.group_name || ''
   form.interval_seconds = m.interval_seconds || systemDefaultInterval.value
   form.jitter_seconds = m.jitter_seconds || 0
   form.enabled = m.enabled
@@ -775,6 +769,7 @@ watch(
   () => [props.show, props.monitor] as const,
   ([show, m]) => {
     if (!show) return
+    createDisplayGroupId.value = props.displayGroupId ?? null
     void loadTemplates()
     if (m) loadFromMonitor(m)
     else resetForm()
@@ -826,7 +821,6 @@ function buildPayload(): CreateParams {
     api_key: usesProbePart.value ? form.api_key.trim() : '',
     primary_model: usesProbePart.value ? form.primary_model.trim() : 'quota',
     extra_models: usesProbePart.value ? form.extra_models : [],
-    group_name: form.group_name.trim(),
     enabled: form.enabled,
     interval_seconds: form.interval_seconds,
     jitter_seconds: form.jitter_seconds || 0,
@@ -871,7 +865,10 @@ async function handleSubmit() {
       await adminAPI.channelMonitor.update(target.id, req)
       appStore.showSuccess(t('admin.channelMonitor.updateSuccess'))
     } else {
-      await adminAPI.channelMonitor.create(buildPayload())
+      await adminAPI.channelMonitor.create({
+        ...buildPayload(),
+        display_group_id: createDisplayGroupId.value,
+      })
       appStore.showSuccess(t('admin.channelMonitor.createSuccess'))
     }
     emit('saved')

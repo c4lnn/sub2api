@@ -679,7 +679,7 @@ export default {
     },
     empty: {
       title: '暂无可显示的渠道',
-      description: '管理员尚未配置可监控的渠道。'
+      description: '管理员尚未在展示分组中发布已启用的渠道。'
     }
   },
 
