@@ -31,19 +31,20 @@
       :description="t('channelStatus.empty.description')"
     />
 
-    <div v-else class="space-y-8">
+    <div v-else class="monitor-groups grid gap-x-5 gap-y-8 [--columns:1] md:[--columns:2] xl:[--columns:3] 2xl:[--columns:4]">
       <section
         v-for="group in groups"
         :key="group.id"
         :aria-label="group.name"
         class="min-w-0 space-y-4"
+        :style="{ '--card-count': group.items.length }"
       >
         <header>
           <h2 class="min-w-0 break-words [overflow-wrap:anywhere] text-lg font-semibold text-gray-900 dark:text-gray-100">
             {{ group.name }}
           </h2>
         </header>
-        <div class="grid gap-5 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <div class="monitor-group-cards grid gap-5">
           <MonitorCard
             v-for="item in group.items"
             :key="item.id"
@@ -112,3 +113,18 @@ function resolveAvailability(item: UserMonitorView): number | null {
   return props.window === '15d' ? primary.availability_15d ?? null : primary.availability_30d ?? null
 }
 </script>
+
+<style scoped>
+.monitor-groups {
+  grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
+}
+
+.monitor-groups > section {
+  --group-columns: min(var(--card-count), var(--columns));
+  grid-column: span var(--group-columns);
+}
+
+.monitor-group-cards {
+  grid-template-columns: repeat(var(--group-columns), minmax(0, 1fr));
+}
+</style>
