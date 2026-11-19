@@ -253,3 +253,4 @@ tools/local-worker/
 !/.github/scripts/free-ultrafast-browser.mjs
 
 .agents/
+!docs/smart-ops-retirement.md
