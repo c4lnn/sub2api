@@ -67,22 +67,26 @@ func TestChannelMonitorDisplayGroupUpgradePreservesLegacyData(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	snapshot := func(query string) string {
+	snapshot := func(query string, args ...any) string {
 		t.Helper()
 		var value string
-		require.NoError(t, db.QueryRowContext(ctx, query).Scan(&value))
+		require.NoError(t, db.QueryRowContext(ctx, query, args...).Scan(&value))
 		return value
 	}
-	queries := []string{
-		`SELECT jsonb_agg(to_jsonb(m) - 'display_group_id' - 'sort_order' ORDER BY id)::text FROM channel_monitors m`,
-		`SELECT jsonb_agg(to_jsonb(h) ORDER BY id)::text FROM channel_monitor_histories h`,
-		`SELECT jsonb_agg(to_jsonb(r) ORDER BY id)::text FROM channel_monitor_daily_rollups r`,
-		`SELECT jsonb_agg(to_jsonb(a) ORDER BY id)::text FROM accounts a`,
-		`SELECT jsonb_agg(to_jsonb(t) ORDER BY id)::text FROM channel_monitor_request_templates t`,
+	// 升级前冻结各表旧列，之后只比较这些列：
+	// 后续迁移给表新增列（如 accounts.domestic_route_probe_at）不算改写旧数据。
+	legacyRows := map[string]func() string{}
+	for _, table := range []string{"channel_monitors", "channel_monitor_histories", "channel_monitor_daily_rollups", "accounts", "channel_monitor_request_templates"} {
+		columns := pq.StringArray{}
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT array_agg(column_name::text ORDER BY ordinal_position) FROM information_schema.columns WHERE table_schema='public' AND table_name=$1`, table).Scan(&columns))
+		legacyRows[table] = func() string {
+			t.Helper()
+			return snapshot(`SELECT jsonb_agg((SELECT jsonb_object_agg(c,to_jsonb(t)->c) FROM unnest($1::text[]) c) ORDER BY id)::text FROM `+pq.QuoteIdentifier(table)+` t`, columns)
+		}
 	}
-	before := make([]string, len(queries))
-	for i, query := range queries {
-		before[i] = snapshot(query)
+	before := make(map[string]string, len(legacyRows))
+	for table, rows := range legacyRows {
+		before[table] = rows()
 	}
 	columnsBefore := snapshot(`SELECT jsonb_agg(jsonb_build_array(column_name,data_type,is_nullable,column_default) ORDER BY ordinal_position)::text FROM information_schema.columns WHERE table_schema='public' AND table_name='channel_monitors'`)
 	indexesBefore := snapshot(`SELECT jsonb_agg(indexdef ORDER BY indexname)::text FROM pg_indexes WHERE schemaname='public' AND tablename='channel_monitors'`)
@@ -94,8 +98,8 @@ func TestChannelMonitorDisplayGroupUpgradePreservesLegacyData(t *testing.T) {
 	require.Equal(t, len(ids), count)
 	require.Equal(t, columnsBefore, snapshot(`SELECT jsonb_agg(jsonb_build_array(column_name,data_type,is_nullable,column_default) ORDER BY ordinal_position)::text FROM information_schema.columns WHERE table_schema='public' AND table_name='channel_monitors' AND column_name NOT IN ('display_group_id','sort_order')`))
 	require.Equal(t, indexesBefore, snapshot(`SELECT jsonb_agg(indexdef ORDER BY indexname)::text FROM pg_indexes WHERE schemaname='public' AND tablename='channel_monitors' AND indexname <> 'idx_channel_monitors_display_group_sort'`))
-	for i, query := range queries {
-		require.JSONEq(t, before[i], snapshot(query))
+	for table, rows := range legacyRows {
+		require.JSONEq(t, before[table], rows(), "迁移改写了 %s 的旧数据", table)
 	}
 	var groupID int64
 	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO channel_monitor_display_groups(name,sort_order) VALUES('正式组',20) RETURNING id`).Scan(&groupID))
@@ -108,8 +112,8 @@ func TestChannelMonitorDisplayGroupUpgradePreservesLegacyData(t *testing.T) {
 		require.NoError(t, db.QueryRowContext(ctx, `SELECT display_group_id,sort_order FROM channel_monitors WHERE id=$1`, ids[0]).Scan(&loadedGroup, &order))
 		require.Equal(t, groupID, loadedGroup)
 		require.Equal(t, 30, order)
-		for i, query := range queries {
-			require.JSONEq(t, before[i], snapshot(query))
+		for table, rows := range legacyRows {
+			require.JSONEq(t, before[table], rows(), "迁移改写了 %s 的旧数据", table)
 		}
 	}
 }
